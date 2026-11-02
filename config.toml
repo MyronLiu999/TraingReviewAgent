@@ -1,3 +1,13 @@
+# ---------------- Chart review (复盘) ----------------
+# Send the Telegram bot a chart screenshot and it replies with an annotated review chart.
+review_model          = "gpt-4o"   # must be an OpenAI model that can read images
+review_refine_passes  = 1          # extra self-check rounds to fix label positions (0 = faster/cheaper)
+review_send_full_resolution = true # also send the review as a file (Telegram compresses photos)
+docs_folder           = "docs"     # your study material (.md, .txt, .pdf) used as the knowledge base
+
+# ---------------- News alerts ----------------
+enable_news_alerts = true          # false = only do chart reviews
+
 # ---------------- Market settings ----------------
 # Which market(s) to judge news against. You can also change this from Telegram
 # with /market equity, /market gold, /market both, or /market NVDA.

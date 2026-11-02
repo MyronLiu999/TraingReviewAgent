@@ -1,4 +1,34 @@
-# News Alert Bot: stock and gold news impact, sent to Telegram
+# Trading Review Agent 交易复盘助手
+
+## 📊 功能一：图表复盘（Chart Review）
+
+**在 Telegram 里把行情截图发给机器人，它会回给你一张标注好的复盘图**，风格类似 Al Brooks 的价格行为标注：
+- 用色块标出市场阶段：**Always In Long**（绿）、**Always In Short**（红）、**交易区间**（蓝框）
+- 用圆圈标出关键 K 线：高潮、反转点、双顶/双底、更高低点/更低高点
+- 用带箭头的标签说明每个形态（英文术语 + 中文解释）
+- 右上角是复盘总结；聊天里还会附一段文字分析（当时好的交易是什么、常见错误）
+
+**用法：**
+1. 截一张行情图（**建议带上右侧价格轴**）。
+2. 在 Telegram 里发给你的机器人。最好以"文件"方式发送，画质更清楚；直接发照片也可以。
+3. 可以加一句说明（caption），例如：`MYM 5分钟，我在 52,250 做空，止损被打`。
+4. 等 30–90 秒，机器人回复复盘图和分析。
+
+**你的学习资料：** 把资料放进 `docs/` 文件夹（支持 `.md`、`.txt`、`.pdf`）。每次复盘，机器人都会读这些资料，并优先使用资料里的术语和规则。
+
+**不用 Telegram 也能测试：**
+```
+python chart_review.py 我的图.png --note "MYM 5分钟"
+```
+结果保存在 `reviews/` 文件夹。
+
+**费用：** 每张图大约 US$0.03–0.08（使用 `gpt-4o`，含一轮自我纠错）。可以在 `config.toml` 里调整：
+- `review_refine_passes = 0`：跳过纠错，更快、更便宜，但标注位置可能偏一些
+- `enable_news_alerts = false`：只做复盘，不推送新闻
+
+**注意：** AI 读图会有误差，标注位置和形态判断不一定完全准确，请把它当作复盘参考，不是交易建议。
+
+## 📰 功能二：新闻提醒（News Alerts）
 
 This bot checks financial news every 2 minutes. An OpenAI model (GPT-4o) reads each new headline and decides whether it is **🟢 positive, 🔴 negative, ⚪ neutral, or 🟡 mixed** for stocks, gold, or both. Important news is sent to your **Telegram** on your phone.
 

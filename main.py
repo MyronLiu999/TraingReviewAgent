@@ -1,4 +1,7 @@
-"""News -> OpenAI -> Telegram alert loop.
+"""Trading assistant bot: chart reviews + news alerts, delivered through Telegram.
+
+Send the bot a chart screenshot  -> it replies with an annotated price-action review chart.
+News feeds are checked in the background -> important headlines are sent as alerts.
 
 Usage:
     python main.py                      # run forever
@@ -8,6 +11,7 @@ Usage:
 
 import argparse
 import html
+import io
 import logging
 import re
 import os
@@ -18,14 +22,21 @@ from datetime import datetime, timedelta, timezone
 
 import openai
 
+from PIL import Image
+
 from analyzer import Analyzer
+from chart_review import ChartReviewer, save_review
 from feeds import NewsItem, fetch_all
 from store import Store
 from telegram_bot import Telegram, format_alert
 
 log = logging.getLogger("news_bot")
 
-HELP = """<b>Commands</b>
+HELP = """📊 <b>Chart review 复盘</b>
+Send me a chart screenshot (photo, or as a file for full quality).
+Add a caption for context, e.g. "MYM 5分钟，我在高点做空" — I'll reply with an annotated review chart.
+
+<b>News commands</b>
 /market equity — judge news for stocks
 /market gold — judge news for gold
 /market both — equity and gold side by side
@@ -88,7 +99,31 @@ class Bot:
         else:
             print(html.unescape(re.sub(r"<[^>]+>", "", text)), "\n" + "-" * 60)
 
-    # ---------- Telegram commands ----------
+    # ---------- Telegram messages ----------
+    def handle_incoming(self, msg: dict) -> None:
+        if msg.get("image"):
+            self.review_chart(msg["image"], msg.get("text", ""))
+        elif msg.get("text"):
+            self.handle_message(msg["text"])
+
+    def review_chart(self, file_id: str, note: str) -> None:
+        self.notify("📊 收到图表，正在复盘，大约需要 30-90 秒…")
+        try:
+            chart = Image.open(io.BytesIO(self.tg.download(file_id)))
+            img, spec = ChartReviewer(self.cfg).review(chart, note)  # re-reads docs/ each time
+        except Exception as e:
+            log.exception("Chart review failed")
+            self.notify(f"❌ 复盘失败：{html.escape(str(e))}")
+            return
+        path = save_review(img)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        self.tg.send_photo(buf.getvalue(), caption="复盘图 Review")
+        if self.cfg.get("review_send_full_resolution", True):
+            self.tg.send_photo(buf.getvalue(), caption="原图分辨率（可放大查看）", as_file=True)
+        self.notify("🧠 <b>复盘分析</b>\n" + html.escape(spec.get("analysis", "")))
+        log.info("Review saved to %s", path)
+
     def handle_message(self, text: str) -> None:
         if not text.startswith("/"):
             self.check_text(text)
@@ -211,13 +246,13 @@ class Bot:
         poll = int(self.cfg.get("poll_seconds", 120))
         next_poll = 0.0
         if self.tg and not once:
-            self.notify(f"🤖 News alert bot started. Markets: <b>{', '.join(self.markets)}</b>. "
-                        "Send /help for commands.")
+            self.notify("🤖 Bot started. Send me a chart screenshot for a review (复盘), "
+                        f"or /help for commands. News markets: <b>{', '.join(self.markets)}</b>")
         while True:
             if self.tg:
-                for text in self.tg.incoming():
-                    self.handle_message(text)
-            if time.time() >= next_poll:
+                for msg in self.tg.incoming():
+                    self.handle_incoming(msg)
+            if self.cfg.get("enable_news_alerts", True) and time.time() >= next_poll:
                 try:
                     self.poll_feeds()
                 except Exception:

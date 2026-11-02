@@ -30,8 +30,30 @@ class Telegram:
         except requests.RequestException as e:
             log.error("Telegram send failed: %s", e)
 
-    def incoming(self) -> list[str]:
-        """Returns new message texts sent by the configured chat (others are ignored)."""
+    def send_photo(self, image_bytes: bytes, caption: str = "", as_file: bool = False) -> None:
+        """Sends an image. as_file=True sends it uncompressed (full resolution)."""
+        method, field = ("sendDocument", "document") if as_file else ("sendPhoto", "photo")
+        try:
+            r = requests.post(f"{self.base}/{method}", timeout=60,
+                              data={"chat_id": self.chat_id, "caption": caption[:1000]},
+                              files={field: ("review.png", image_bytes, "image/png")})
+            if not r.ok:
+                log.error("Telegram %s failed: %s %s", method, r.status_code, r.text[:200])
+        except requests.RequestException as e:
+            log.error("Telegram %s failed: %s", method, e)
+
+    def download(self, file_id: str) -> bytes:
+        r = requests.get(f"{self.base}/getFile", params={"file_id": file_id}, timeout=15)
+        r.raise_for_status()
+        path = r.json()["result"]["file_path"]
+        token = self.base.rsplit("/bot", 1)[1]
+        f = requests.get(f"https://api.telegram.org/file/bot{token}/{path}", timeout=60)
+        f.raise_for_status()
+        return f.content
+
+    def incoming(self) -> list[dict]:
+        """New messages from the configured chat (others are ignored).
+        Each is {"text": str, "image": file_id or None}."""
         try:
             r = requests.get(f"{self.base}/getUpdates", timeout=15,
                              params={"offset": self.offset, "timeout": 0})
@@ -45,9 +67,14 @@ class Telegram:
             msg = upd.get("message") or {}
             if str(msg.get("chat", {}).get("id")) != self.chat_id:
                 continue  # only obey the owner's chat
+            image = None
+            if msg.get("photo"):
+                image = msg["photo"][-1]["file_id"]  # largest size
+            elif (msg.get("document") or {}).get("mime_type", "").startswith("image/"):
+                image = msg["document"]["file_id"]  # image sent as a file (full quality)
             text = (msg.get("text") or msg.get("caption") or "").strip()
-            if text:
-                out.append(text)
+            if text or image:
+                out.append({"text": text, "image": image})
         return out
 
 
