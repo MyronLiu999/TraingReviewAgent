@@ -1,0 +1,5 @@
+.env
+news_alerts.db
+__pycache__/
+*.log
+.venv/

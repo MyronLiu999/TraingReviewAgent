@@ -1,0 +1,62 @@
+# ---------------- Market settings ----------------
+# Which market(s) to judge news against. You can also change this from Telegram
+# with /market equity, /market gold, /market both, or /market NVDA.
+markets = ["EQUITY"]
+
+equity_focus = "S&P 500, Nasdaq-100"
+gold_focus   = "XAUUSD spot, COMEX GC futures"
+horizon      = "INTRADAY"        # INTRADAY or SWING
+
+# ---------------- Alert settings ----------------
+min_impact_to_alert = 3          # 1-5. Only news at or above this strength is sent to Telegram
+alert_on_neutral    = false      # Send NEUTRAL verdicts too?
+poll_seconds        = 120        # How often to check the feeds
+max_item_age_minutes = 180       # Ignore news older than this
+quiet_first_run     = true       # On first start, mark existing headlines as seen instead of flooding you
+
+# ---------------- OpenAI settings ----------------
+model      = "gpt-4o"            # "gpt-4o-mini" is ~15x cheaper but less sharp; any newer OpenAI model also works
+batch_size = 8                   # Headlines analyzed per request
+
+# ---------------- News sources ----------------
+# tier: 1 = official / top wire, 2 = established media, 3 = aggregator / unverified.
+# Public RSS URLs change from time to time; if one stops working, replace or remove it.
+[[feeds]]
+name = "Federal Reserve press releases"
+url  = "https://www.federalreserve.gov/feeds/press_all.xml"
+tier = 1
+
+[[feeds]]
+name = "CNBC Top News"
+url  = "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+tier = 2
+
+[[feeds]]
+name = "CNBC Economy"
+url  = "https://www.cnbc.com/id/20910258/device/rss/rss.html"
+tier = 2
+
+[[feeds]]
+name = "MarketWatch Top Stories"
+url  = "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+tier = 2
+
+[[feeds]]
+name = "FXStreet News"
+url  = "https://www.fxstreet.com/rss/news"
+tier = 2
+
+[[feeds]]
+name = "Investing.com Commodities"
+url  = "https://www.investing.com/rss/news_11.rss"
+tier = 2
+
+[[feeds]]
+name = "Google News: gold price"
+url  = "https://news.google.com/rss/search?q=gold+price+when:1h&hl=en-US&gl=US&ceid=US:en"
+tier = 3
+
+[[feeds]]
+name = "Google News: stock market"
+url  = "https://news.google.com/rss/search?q=stock+market+OR+Fed+OR+CPI+when:1h&hl=en-US&gl=US&ceid=US:en"
+tier = 3
