@@ -1,34 +1,87 @@
 # Trading Review Agent 交易复盘助手
 
-## 📊 功能一：图表复盘（Chart Review）
-
-**在 Telegram 里把行情截图发给机器人，它会回给你一张标注好的复盘图**，风格类似 Al Brooks 的价格行为标注：
+把行情截图交给它，它会在图上标注出 **Al Brooks 价格行为**风格的复盘图：
 - 用色块标出市场阶段：**Always In Long**（绿）、**Always In Short**（红）、**交易区间**（蓝框）
 - 用圆圈标出关键 K 线：高潮、反转点、双顶/双底、更高低点/更低高点
 - 用带箭头的标签说明每个形态（英文术语 + 中文解释）
-- 右上角是复盘总结；聊天里还会附一段文字分析（当时好的交易是什么、常见错误）
+- 附复盘总结和文字分析（当时好的交易是什么、常见错误）
 
-**用法：**
-1. 截一张行情图（**建议带上右侧价格轴**）。
-2. 在 Telegram 里发给你的机器人。最好以"文件"方式发送，画质更清楚；直接发照片也可以。
-3. 可以加一句说明（caption），例如：`MYM 5分钟，我在 52,250 做空，止损被打`。
-4. 等 30–90 秒，机器人回复复盘图和分析。
+主要通过**电脑上的网页界面**使用，截图后直接粘贴即可。Telegram 是可选功能（新闻提醒、以后的入场出场提醒）。
 
-**你的学习资料：** 把资料放进 `docs/` 文件夹（支持 `.md`、`.txt`、`.pdf`）。每次复盘，机器人都会读这些资料，并优先使用资料里的术语和规则。
+---
 
-**不用 Telegram 也能测试：**
-```
-python chart_review.py 我的图.png --note "MYM 5分钟"
-```
-结果保存在 `reviews/` 文件夹。
+## 🚀 第一次使用（约 10 分钟）
 
-**费用：** 每张图大约 US$0.03–0.08（使用 `gpt-4o`，含一轮自我纠错）。可以在 `config.toml` 里调整：
-- `review_refine_passes = 0`：跳过纠错，更快、更便宜，但标注位置可能偏一些
-- `enable_news_alerts = false`：只做复盘，不推送新闻
+### 1. 安装 Python（只需一次）
+到 https://www.python.org/downloads/ 下载安装。**Windows 安装时一定要勾选 "Add python.exe to PATH"。**
 
-**注意：** AI 读图会有误差，标注位置和形态判断不一定完全准确，请把它当作复盘参考，不是交易建议。
+### 2. 准备 OpenAI API Key
+1. 登录 https://platform.openai.com （可以用 ChatGPT 账号）。
+2. **Settings → Billing** 充值，例如 $5。⚠️ ChatGPT Plus 会员**不包含** API 额度。
+3. 打开 https://platform.openai.com/api-keys ，点 **Create new secret key**，复制以 `sk-` 开头的密钥。
 
-## 📰 功能二：新闻提醒（News Alerts）
+### 3. 下载并启动
+1. 在 GitHub 仓库页面点 **Code → Download ZIP**，解压。
+2. **Windows：** 双击 `start.bat`；**Mac：** 在终端进入文件夹，运行 `./start.sh`。
+3. 第一次会自动安装（约 1 分钟），然后打开一个 `.env` 文件。填两项后保存：
+   ```
+   APP_PASSWORD=自己设一个网页登录密码
+   OPENAI_API_KEY=sk-...你的密钥...
+   ```
+4. 再双击一次 `start.bat`（或运行 `./start.sh`）。浏览器会自动打开 **http://localhost:8000**。
+
+### 4. 使用
+1. 输入你设的密码登录。
+2. 在交易软件里截图（Windows：`Win+Shift+S`；Mac：`⌘+Shift+4`），回到网页按 **Ctrl+V**（Mac：**⌘+V**）粘贴。也可以把图片拖进来，或点击选择文件。
+3. 可选：写一句说明，例如 `MYM 5分钟，我在高点做空，止损被打`。
+4. 点 **开始复盘**。30–90 秒后显示复盘图、复盘分析和总结。
+5. 左侧是**历史复盘**，点开随时回看。可以下载复盘图，也可以一键发送到 Telegram。
+
+以后每次使用，只要双击 `start.bat` 就行。**使用期间保持那个黑色窗口开着**，关掉窗口就停止。
+
+---
+
+## 📚 你的学习资料
+
+把资料放进 `docs/` 文件夹（支持 `.md`、`.txt`、`.pdf`）。每次复盘都会读取这些资料，并优先使用资料里的术语和规则。资料改了不用重启。
+
+## ⚙️ 设置（`config.toml`，可选）
+
+| 设置 | 说明 |
+|---|---|
+| `review_model = "gpt-4o"` | 读图用的模型 |
+| `review_refine_passes = 1` | 自我纠错轮数；`0` 更快更便宜，但标注位置可能偏一些 |
+| `web_port = 8000` | 网页端口 |
+| `web_host = "127.0.0.1"` | 改成 `"0.0.0.0"` 后，同一 Wi-Fi 下的手机或平板也能访问（用电脑的局域网 IP） |
+| `enable_news_alerts` | `false` = 关闭新闻提醒 |
+
+**费用：** 每张复盘图大约 US$0.03–0.08（gpt-4o，含一轮纠错），以 OpenAI 账单为准。
+
+**注意：** AI 读图会有误差，标注位置和形态判断不一定完全准确。请把它当作复盘参考，不是交易建议。
+
+**常见问题：**
+
+| 提示 | 解决办法 |
+|---|---|
+| `'python' 不是内部或外部命令` | 重新安装 Python，勾选 "Add python.exe to PATH" |
+| `请在 .env 里设置 APP_PASSWORD` | 打开 `.env`，填写 `APP_PASSWORD=` 后面的密码 |
+| `Incorrect API key` / `401` | 检查 `.env` 里的 `OPENAI_API_KEY` |
+| `insufficient_quota` / `429` | 去 platform.openai.com → Billing 充值 |
+| 浏览器没有自动打开 | 手动打开 http://localhost:8000 |
+| 端口被占用 | 把 `config.toml` 里的 `web_port` 改成 8001 之类 |
+
+不打开网页也能测试：`python chart_review.py 我的图.png --note "MYM 5分钟"`，结果保存在 `reviews/` 文件夹。
+
+---
+
+## 📱 Telegram（可选）
+
+在 `.env` 里填上 `TELEGRAM_BOT_TOKEN`（从 @BotFather 获取，步骤见下方 "Create your Telegram bot"），并先给你的机器人发一句 `hi`。启动时会自动获取 chat ID，Telegram 机器人会和网页一起在后台运行：
+- 在 Telegram 里发截图，也能收到复盘图（和网页共用历史记录）
+- 新闻提醒（见下方）
+- 以后的入场 / 出场提醒会走这里
+
+## 📰 新闻提醒 News alerts（可选）
 
 This bot checks financial news every 2 minutes. An OpenAI model (GPT-4o) reads each new headline and decides whether it is **🟢 positive, 🔴 negative, ⚪ neutral, or 🟡 mixed** for stocks, gold, or both. Important news is sent to your **Telegram** on your phone.
 
@@ -71,28 +124,9 @@ You can also **paste any news into the Telegram chat** and get a verdict within 
 6. Tap the link BotFather gives you (`t.me/your_bot_name`), press **Start**, and send your bot the message `hi`.
    *(This step matters: the bot can only find your chat after you message it.)*
 
-### Step 4: Run the start script the first time
-- **Windows:** double-click `start.bat`.
-- **Mac:** open Terminal, type `cd ` (with a space), drag the bot folder into the window, press Enter, then run `./start.sh`.
-
-It installs everything (about a minute) and then creates a file named **`.env`** in the folder. On Windows, Notepad opens it automatically; on a Mac, open it with TextEdit.
-
-### Step 5: Put your two keys into `.env`
-Fill in the first two lines and **leave `TELEGRAM_CHAT_ID` empty**:
-```
-OPENAI_API_KEY=sk-...your key...
-TELEGRAM_BOT_TOKEN=7712345678:AAHk3x...your token...
-TELEGRAM_CHAT_ID=
-```
-Save the file.
-
-### Step 6: Run the start script again
-Double-click `start.bat` (Windows) or run `./start.sh` (Mac) again. It:
-1. **Finds your Telegram chat ID automatically** and saves it. Your bot sends you **"✅ Connected!"**. (If it says "No messages found", send your bot `hi` in Telegram and run the script again.)
-2. Tests OpenAI on a sample headline.
-3. Starts the bot. You get **"🤖 News alert bot started"** in Telegram.
-
-From now on, just double-click `start.bat` (or run `./start.sh`) whenever you want the bot running. **Keep the window open** while you trade; close it to stop.
+### Step 4: Add the token and start
+Put `TELEGRAM_BOT_TOKEN=...` in `.env` (next to `APP_PASSWORD` and `OPENAI_API_KEY`), send your bot `hi`, and run `start.bat` / `./start.sh`.
+The start script finds your chat ID automatically. Your bot sends **"✅ Connected!"** and then **"🤖 Bot started"**, and it runs in the background together with the web UI.
 
 ---
 

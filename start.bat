@@ -1,5 +1,5 @@
 @echo off
-REM Windows: double-click this file. First run sets everything up, later runs just start the bot.
+REM Windows: double-click this file. First run sets everything up, later runs just start the app.
 cd /d "%~dp0"
 if not exist .venv (
   echo Setting up - first run only...
@@ -8,16 +8,15 @@ if not exist .venv (
 )
 if not exist .env (
   copy .env.example .env >nul
-  echo Created .env - fill in OPENAI_API_KEY and TELEGRAM_BOT_TOKEN in Notepad, save, then double-click start.bat again.
+  echo Created .env - set APP_PASSWORD and OPENAI_API_KEY in Notepad, save, then double-click start.bat again.
   notepad .env
   pause & exit /b 1
 )
-findstr /r /c:"^TELEGRAM_CHAT_ID=[0-9-]" .env >nul || (
-  echo Finding your Telegram chat ID...
-  .venv\Scripts\python get_chat_id.py || (pause & exit /b 1)
+findstr /r /c:"^TELEGRAM_BOT_TOKEN=[0-9]*:" .env >nul && (
+  findstr /r /c:"^TELEGRAM_CHAT_ID=[0-9-]" .env >nul || (
+    echo Finding your Telegram chat ID...
+    .venv\Scripts\python get_chat_id.py || echo Telegram skipped for now - the web UI still works
+  )
 )
-echo Testing OpenAI connection...
-.venv\Scripts\python main.py --check "Test: Fed holds rates steady as expected" || (pause & exit /b 1)
-echo Starting bot - close this window to stop...
-.venv\Scripts\python main.py
+.venv\Scripts\python web.py
 pause

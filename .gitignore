@@ -3,3 +3,4 @@ news_alerts.db
 __pycache__/
 *.log
 .venv/
+reviews/2*/

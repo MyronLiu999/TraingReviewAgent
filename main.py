@@ -25,7 +25,7 @@ import openai
 from PIL import Image
 
 from analyzer import Analyzer
-from chart_review import ChartReviewer, save_review
+from chart_review import ChartReviewer, store_review
 from feeds import NewsItem, fetch_all
 from store import Store
 from telegram_bot import Telegram, format_alert
@@ -115,14 +115,14 @@ class Bot:
             log.exception("Chart review failed")
             self.notify(f"❌ 复盘失败：{html.escape(str(e))}")
             return
-        path = save_review(img)
+        meta = store_review(chart, img, spec, note, source="telegram")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         self.tg.send_photo(buf.getvalue(), caption="复盘图 Review")
         if self.cfg.get("review_send_full_resolution", True):
             self.tg.send_photo(buf.getvalue(), caption="原图分辨率（可放大查看）", as_file=True)
         self.notify("🧠 <b>复盘分析</b>\n" + html.escape(spec.get("analysis", "")))
-        log.info("Review saved to %s", path)
+        log.info("Review saved: %s", meta["id"])
 
     def handle_message(self, text: str) -> None:
         if not text.startswith("/"):

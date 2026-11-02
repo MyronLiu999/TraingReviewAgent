@@ -362,11 +362,44 @@ class ChartReviewer:
         return render(chart, spec), spec
 
 
-def save_review(img: Image.Image, name: str = "chart", folder: str = "reviews") -> str:
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, f"{datetime.now():%Y-%m-%d_%H%M%S}_{name}_review.png")
-    img.save(path)
-    return path
+REVIEWS_DIR = "reviews"
+
+
+def store_review(original: Image.Image, img: Image.Image, spec: dict | None,
+                 note: str = "", source: str = "web") -> dict:
+    """Saves one review as reviews/<id>/{original.png, review.png, meta.json}; returns meta."""
+    rid = f"{datetime.now():%Y%m%d_%H%M%S}_{os.urandom(2).hex()}"
+    folder = os.path.join(REVIEWS_DIR, rid)
+    os.makedirs(folder)
+    prepare(original).save(os.path.join(folder, "original.png"))
+    img.save(os.path.join(folder, "review.png"))
+    spec = spec or {}
+    meta = {
+        "id": rid,
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "source": source,
+        "note": note,
+        "description": spec.get("chart_description", ""),
+        "summary": spec.get("summary", ""),
+        "analysis": spec.get("analysis", ""),
+        "spec": spec,
+    }
+    with open(os.path.join(folder, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    return meta
+
+
+def list_reviews(limit: int = 200) -> list[dict]:
+    """Newest first. Each item is the review's meta without the bulky spec."""
+    out = []
+    for meta_path in sorted(glob.glob(os.path.join(REVIEWS_DIR, "*", "meta.json")), reverse=True)[:limit]:
+        try:
+            meta = json.load(open(meta_path, encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        meta.pop("spec", None)
+        out.append(meta)
+    return out
 
 
 def main() -> None:
@@ -385,17 +418,13 @@ def main() -> None:
 
     chart = Image.open(args.image)
     if args.spec:
-        img = render(prepare(chart), json.load(open(args.spec, encoding="utf-8")))
-        spec = None
+        spec = json.load(open(args.spec, encoding="utf-8"))
+        img = render(prepare(chart), spec)
     else:
         img, spec = ChartReviewer(cfg).review(chart, args.note)
-    name = os.path.splitext(os.path.basename(args.image))[0]
-    path = save_review(img, name)
-    if spec:
-        json.dump(spec, open(path.replace(".png", ".json"), "w", encoding="utf-8"),
-                  ensure_ascii=False, indent=2)
-        print(spec["analysis"])
-    print(f"\nSaved: {path}")
+    meta = store_review(chart, img, spec, args.note, source="cli")
+    print(meta["analysis"])
+    print(f"\nSaved: {os.path.join(REVIEWS_DIR, meta['id'], 'review.png')}")
 
 
 if __name__ == "__main__":
