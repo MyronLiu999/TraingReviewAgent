@@ -8,7 +8,9 @@ open_browser = true                # open the browser automatically on start
 review_model          = "gpt-4o"   # must be an OpenAI model that can read images
 review_refine_passes  = 1          # extra self-check rounds to fix label positions (0 = faster/cheaper)
 review_send_full_resolution = true # also send the review as a file (Telegram compresses photos)
-docs_folder           = "docs"     # your study material (.md, .txt, .pdf) used as the knowledge base
+knowledge_base        = "knowledge" # structured rule base (Rule IDs + decision framework). Point it at your
+                                    # own base when ready, e.g. "D:/Uchicago Courses/Trading/TradingAIKnowledgeBase"
+docs_folder           = "docs"     # extra study material (.md, .txt, .pdf), added after the knowledge base
 
 # ---------------- News alerts ----------------
 enable_news_alerts = true          # false = only do chart reviews

@@ -122,6 +122,11 @@ class Bot:
         if self.cfg.get("review_send_full_resolution", True):
             self.tg.send_photo(buf.getvalue(), caption="原图分辨率（可放大查看）", as_file=True)
         self.notify("🧠 <b>复盘分析</b>\n" + html.escape(spec.get("analysis", "")))
+        status = {"met": "✅", "partial": "🟡", "rejected": "❌"}
+        rules = [f"{status.get(r['status'], '')} <code>{html.escape(r['rule_id'])}</code> "
+                 f"{html.escape(r['observation'])}" for r in spec.get("rules_applied", [])]
+        if rules:
+            self.notify("📐 <b>依据的规则</b>\n" + "\n".join(rules))
         log.info("Review saved: %s", meta["id"])
 
     def handle_message(self, text: str) -> None:

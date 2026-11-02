@@ -94,6 +94,11 @@ white-space:pre-wrap;line-height:1.65;font-size:14px}
 .actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .meta{color:#8b949e;font-size:13px;margin-top:8px}
 .err{color:#ff7b72}
+.rule{display:flex;gap:10px;padding:6px 0;border-top:1px solid #21262d;white-space:normal}
+.rule:first-child{border-top:0}
+.rule .id{font-family:Consolas,monospace;color:#79c0ff;min-width:96px}
+.badge{font-size:12px;padding:1px 8px;border-radius:10px;height:fit-content;white-space:nowrap}
+.met{background:#1f3b2a;color:#56d364}.partial{background:#3b3320;color:#e3b341}.rejected{background:#3d1f22;color:#ff7b72}
 </style></head><body>
 <aside><h2>历史复盘 <a href="/logout">退出</a></h2><div id="history"></div></aside>
 <main>
@@ -117,6 +122,7 @@ white-space:pre-wrap;line-height:1.65;font-size:14px}
     <div class="meta" id="meta"></div>
     <div class="card"><h3>🧠 复盘分析</h3><div id="analysis"></div></div>
     <div class="card"><h3>📝 复盘总结</h3><div id="summary"></div></div>
+    <div class="card" id="rulesCard"><h3>📐 依据的规则 Rules applied</h3><div id="rules"></div></div>
   </div>
 </main>
 <script>
@@ -164,6 +170,18 @@ function show(m){
   $("out").src = src; $("full").href = src; $("dl").href = src; $("dl").download = m.id + "_review.png";
   $("analysis").textContent = m.analysis || "（无）";
   $("summary").textContent = m.summary || "（无）";
+  const rules = m.rules_applied || [];
+  $("rulesCard").style.display = rules.length ? "block" : "none";
+  const label = {met:"成立", partial:"部分成立", rejected:"不成立"};
+  $("rules").innerHTML = "";
+  for (const r of rules){
+    const row = document.createElement("div"); row.className = "rule";
+    row.innerHTML = '<span class="id"></span><span class="badge"></span><span class="txt"></span>';
+    row.querySelector(".id").textContent = r.rule_id;
+    const b = row.querySelector(".badge"); b.textContent = label[r.status] || r.status; b.classList.add(r.status);
+    row.querySelector(".txt").textContent = (r.concept ? r.concept + "：" : "") + r.observation;
+    $("rules").appendChild(row);
+  }
   $("meta").textContent = m.created.replace("T"," ") + (m.note ? "  ·  " + m.note : "") +
                           (m.source === "telegram" ? "  ·  来自 Telegram" : "");
   $("result").style.display = "block";

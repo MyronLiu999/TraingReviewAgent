@@ -14,6 +14,7 @@ import json
 import logging
 import math
 import os
+import re
 from datetime import datetime
 
 import openai
@@ -48,6 +49,13 @@ chart. You produce a post-trade review ("复盘") by placing annotations on the 
 style of an Al Brooks annotated chart: shaded zones for market phases, rings on key bars,
 and short labels with arrows pointing at the exact bars they describe.
 
+# KNOWLEDGE BASE
+You must analyze the chart with the knowledge base below. It contains a decision framework
+(DF-1 ... DF-7) and rules with IDs (e.g. PA-H-002, PA-MTR-001, TD-005). Work through the
+decision framework IN ORDER before deciding on any annotation, and only apply a rule when its
+"Required Context" is actually met on this chart. Check each rule's "Invalidation" and
+"Failure Scenarios" before you use it.
+
 {knowledge}
 
 # COORDINATES
@@ -62,14 +70,28 @@ Read positions carefully from the grid labels. Precise placement matters more th
 2. Put `rings` on the key bars: climaxes, reversal points, tops/bottoms of double tops,
    higher lows / lower highs, signal bars.
 3. Add 6-12 `callouts`. Each callout has a short label and an arrow to the bar it describes.
+   Set `rule_id` to the knowledge-base rule that justifies the callout (e.g. "PA-H-002"),
+   or "" if no rule applies.
    Format the text as "English term 中文解释", at most 2 short lines (use \\n between lines).
    Examples: "Sell Climax 卖出高潮", "Bull Breakout + Follow-through\\n多头突破 + 跟进",
    "H2 buy 第二次买点", "Double Top 双顶 (DT)".
 4. Write a `summary` (Chinese, 4-8 short lines, each starting with ①②③... or "当前："):
    the story of the chart, then the current situation and what would confirm the bull or
    bear case next.
-5. Write `analysis`: a slightly fuller Chinese explanation for the chat message (max ~600
-   Chinese characters), including what a good trade would have been and common mistakes.
+5. Fill `rules_applied`: every rule you relied on or explicitly rejected, with what you saw on
+   the chart (`observation`, Chinese, one sentence) and `status`:
+   met = context and detection logic satisfied; partial = some conditions missing (say which);
+   rejected = looks like the pattern but the rule's invalidation / failure case applies.
+   Include the TD-* rules you used to judge trades (stops, targets, when not to trade).
+6. Write `analysis` (Chinese, max ~900 characters) following the decision framework, with
+   these headings on their own lines:
+   【市场背景】 phases and Always In direction (DF-2)
+   【关键结构】 the key events (DF-3)
+   【交易机会】 the good setups: entry, stop, target, trader's equation (DF-4)
+   【应避免的交易】 traps and trades not to take (DF-5); if the user described their own
+   trade, judge it point by point here
+   【当前与下一步】 current state and what would confirm bulls or bears (DF-6)
+   Cite rule IDs in square brackets, e.g. [PA-H-002]. Never invent win rates.
 
 # LAYOUT RULES
 - Label positions (label_x, label_y = top-left corner of the label) must be in EMPTY space:
@@ -93,7 +115,8 @@ returned. Check every element carefully:
 - Does each arrow end exactly on the bar it describes? Is each ring centered on the right bar?
 - Is any label covering candles, the title, the price axis, other labels, or order lines?
 - Do the zones match the real phases of the price action?
-- Is the price-action reading itself correct?
+- Is the price-action reading itself correct? Was each rule applied only where its Required
+  Context is met, and does each callout's rule_id match what it describes?
 Return the full corrected JSON (same schema). Keep what is right; fix what is wrong.
 Previous JSON:
 """
@@ -133,15 +156,28 @@ OUTPUT_SCHEMA = {
                 "label_x": NUM, "label_y": NUM,
                 "target_x": NUM, "target_y": NUM,
                 "arrow": {"type": "boolean"},
+                "rule_id": {"type": "string"},
             },
-            "required": ["text", "color", "label_x", "label_y", "target_x", "target_y", "arrow"],
+            "required": ["text", "color", "label_x", "label_y", "target_x", "target_y", "arrow",
+                         "rule_id"],
+            "additionalProperties": False,
+        }},
+        "rules_applied": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "rule_id": {"type": "string"},
+                "concept": {"type": "string"},
+                "status": {"type": "string", "enum": ["met", "partial", "rejected"]},
+                "observation": {"type": "string"},
+            },
+            "required": ["rule_id", "concept", "status", "observation"],
             "additionalProperties": False,
         }},
         "summary": {"type": "string"},
         "summary_x": NUM, "summary_y": NUM,
         "analysis": {"type": "string"},
     },
-    "required": ["chart_description", "zones", "rings", "callouts", "summary",
+    "required": ["chart_description", "zones", "rings", "callouts", "rules_applied", "summary",
                  "summary_x", "summary_y", "analysis"],
     "additionalProperties": False,
 }
@@ -172,6 +208,24 @@ def find_font() -> str | None:
             return path
     log.warning("No Chinese font found; Chinese text may not display. Install a CJK font.")
     return None
+
+
+def load_knowledge_base(folder: str, limit: int = 150_000) -> str:
+    """Reads the structured knowledge base (.md files). The master index and the decision
+    framework go first so they are never cut off when the base is larger than `limit`."""
+    files = sorted(glob.glob(os.path.join(folder, "**", "*.md"), recursive=True))
+    first = [f for f in files if re.match(r"0[07]_", os.path.basename(f))]
+    texts = []
+    for path in first + [f for f in files if f not in first]:
+        try:
+            texts.append(f"## {os.path.relpath(path, folder)}\n" + open(path, encoding="utf-8").read())
+        except OSError as e:
+            log.warning("Could not read %s: %s", path, e)
+    joined = "\n\n".join(texts)
+    if len(joined) > limit:
+        log.warning("Knowledge base is long (%d chars); using the first %d", len(joined), limit)
+        joined = joined[:limit]
+    return joined
 
 
 def load_knowledge(folder: str = "docs", limit: int = 120_000) -> str:
@@ -259,23 +313,37 @@ def render(chart: Image.Image, spec: dict) -> Image.Image:
         return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
 
     def label(x, y, text, color, size=19, bg=(10, 12, 20, 210)):
+        """Draws a boxed label with its top-left near (x, y), moved to the nearest free spot
+        if it would overlap an earlier label. Returns the box."""
         f = font(size)
         pad = 6 * unit
-        box = d.multiline_textbbox((x, y), text, font=f, spacing=4)
-        bw, bh = box[2] - box[0], box[3] - box[1]
-        x = min(max(x, pad), w - bw - pad)  # keep inside the image
-        y = min(max(y, pad), h - bh - pad)
-        for _ in range(12):  # nudge down/up to avoid overlapping earlier labels
-            box = (x - pad, y - pad, x + bw + pad, y + bh + pad)
-            if not any(overlaps(box, p) for p in placed):
+        tb = d.multiline_textbbox((0, 0), text, font=f, spacing=4)
+        bw, bh = tb[2] - tb[0], tb[3] - tb[1]
+
+        def box_at(cx, cy):
+            cx = min(max(cx, pad), w - bw - pad)  # keep inside the image
+            cy = min(max(cy, pad), h - bh - pad)
+            return (cx - pad, cy - pad, cx + bw + pad, cy + bh + pad)
+
+        step_y, step_x = bh + 2 * pad + 4 * unit, bw / 2
+        candidates = [(0, 0)]
+        for k in range(1, 7):
+            candidates += [(0, k * step_y), (0, -k * step_y),
+                           (k * step_x, 0), (-k * step_x, 0)]
+        box = box_at(x, y)
+        for dx, dy in candidates:
+            cand = box_at(x + dx, y + dy)
+            if not any(overlaps(cand, p) for p in placed):
+                box = cand
                 break
-            y = y + bh + 2 * pad if y + 2 * bh < h else y - bh - 2 * pad
         placed.append(box)
         layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ImageDraw.Draw(layer).rounded_rectangle(box, radius=6 * unit, fill=bg,
                                                 outline=RGB[color] + (255,), width=max(1, round(2 * unit)))
         img.alpha_composite(layer)
-        d.multiline_text((x, y), text, font=f, fill=RGB[color], spacing=4)
+        # offset by the text's own bbox origin so the text sits exactly inside the box
+        d.multiline_text((box[0] + pad - tb[0], box[1] + pad - tb[1]), text, font=f,
+                         fill=RGB[color], spacing=4)
         return box
 
     for zn in spec.get("zones", []):
@@ -292,7 +360,8 @@ def render(chart: Image.Image, spec: dict) -> Image.Image:
                   width=max(2, round(3 * unit)))
 
     for c in spec.get("callouts", []):
-        box = label(px(c["label_x"]), py(c["label_y"]), c["text"], c["color"], 18)
+        text = c["text"] + (f"\n[{c['rule_id']}]" if c.get("rule_id") else "")
+        box = label(px(c["label_x"]), py(c["label_y"]), text, c["color"], 18)
         if c.get("arrow", True):
             tx, ty = px(c["target_x"]), py(c["target_y"])
             # start the arrow at the label edge closest to the target
@@ -319,13 +388,21 @@ class ChartReviewer:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.client = openai.OpenAI()  # reads OPENAI_API_KEY from the environment
-        knowledge = KNOWLEDGE_PRIMER
+        kb = load_knowledge_base(cfg.get("knowledge_base", "knowledge"))
+        if kb:
+            knowledge = kb
+            log.info("Loaded %d characters of knowledge base", len(kb))
+        else:
+            log.warning("Knowledge base not found at %s; using the short built-in primer",
+                        cfg.get("knowledge_base", "knowledge"))
+            knowledge = KNOWLEDGE_PRIMER
         docs = load_knowledge(cfg.get("docs_folder", "docs"))
         if docs:
             knowledge += ("\n# THE USER'S OWN STUDY MATERIAL (follow its terms and rules first)\n"
                           + docs)
             log.info("Loaded %d characters of study material from docs/", len(docs))
-        self.system = SYSTEM_PROMPT.format(knowledge=knowledge)
+        # replace() rather than format(): study material may contain { } characters
+        self.system = SYSTEM_PROMPT.replace("{knowledge}", knowledge)
 
     def _ask(self, content: list) -> dict:
         response = self.client.chat.completions.create(
@@ -382,6 +459,7 @@ def store_review(original: Image.Image, img: Image.Image, spec: dict | None,
         "description": spec.get("chart_description", ""),
         "summary": spec.get("summary", ""),
         "analysis": spec.get("analysis", ""),
+        "rules_applied": spec.get("rules_applied", []),
         "spec": spec,
     }
     with open(os.path.join(folder, "meta.json"), "w", encoding="utf-8") as f:
