@@ -32,9 +32,13 @@ def find_annotation_ref(text: str) -> str | None:
 
 def route(request: dict, session_state: dict | None = None) -> str:
     explicit = (request.get("mode") or "").lower()
+    text = request.get("text") or ""
+    # "remember X" typed into a chat box (the web tabs send study/discuss) must still become a
+    # candidate with the approval notice, not a chat answer that says "got it"
+    if explicit in ("study", "discuss", "explain") and MEMORY_RE.search(text):
+        return "memory"
     if explicit in MODES:
         return explicit
-    text = request.get("text") or ""
     has_chart = bool(request.get("image") is not None or request.get("image_path") or request.get("csv"))
     if MEMORY_RE.search(text):
         return "memory"

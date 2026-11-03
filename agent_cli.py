@@ -92,6 +92,8 @@ def memory_cmd(agent, args) -> None:
 
 
 def main() -> None:
+    from main import safe_console
+    safe_console()
     ap = argparse.ArgumentParser(prog="agent_cli.py")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("study"); p.add_argument("question"); p.add_argument("--depth", default="detailed")

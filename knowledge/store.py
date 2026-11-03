@@ -65,7 +65,8 @@ class Evidence:
         if self.authority == "canonical":
             parts = [f"{self.tag} p.{self.page}"]
             if self.chapter:
-                parts.append(self.chapter.split("  ")[0][:40])
+                ch = self.chapter.split("  ")[0]
+                parts.append(ch if len(ch) <= 60 else ch[:60].rsplit(" ", 1)[0] + "…")   # cut at a word
             if self.figures:
                 parts.append("Fig " + ", ".join(self.figures[:3]))
             parts.append(f"{self.source_id} · KB {self.knowledge_version}")

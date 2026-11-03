@@ -375,6 +375,8 @@ class CoachAgent:
     # ------------------------------------------------------------ MEMORY ("remember this")
     def remember(self, request: dict, sid: str) -> dict:
         text = (request.get("text") or "").strip()
+        # store what to remember, not the request wording ("以后请记住，" / "请记住：")
+        text = re.sub(r"^(以后|今后|从现在起|从今往后)?[，,\s]*(请)?(记住|记得|记下来)[：:，,\s]*", "", text) or text
         concepts = detect_concepts(text)
         kind = "user_claim" if concepts else "preference"
         cid = self.memory.add_candidate(kind, text, "The user asked the coach to remember this. Pending human approval.",

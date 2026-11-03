@@ -149,3 +149,24 @@ class QuoteVerificationTests(FixtureCase):
             self.assertEqual(out[1]["quote"], exact)
         finally:
             kb.close()
+
+
+class ChapterTitleTests(unittest.TestCase):
+    def test_title_stops_at_the_blank_line_before_the_body(self):
+        from knowledge.indexer import chapter_heading
+        page = ("C H A P T E R 3\n\n\n       Major Trend Reversal\n\n"
+                "here are many ways a trend can reverse, and the body continues on this line.\n")
+        self.assertEqual(chapter_heading(page), "Ch 3 Major Trend Reversal")
+        page = "Chapter 4\n\nBreakout Entries in Ex-\n   isting Strong Trends\n\nThe body starts here.\n"
+        self.assertEqual(chapter_heading(page), "Ch 4 Breakout Entries in Existing Strong Trends")
+
+    def test_citation_cuts_long_chapter_titles_at_a_word(self):
+        from knowledge.store import Evidence
+        import dataclasses
+        names = {f.name for f in dataclasses.fields(Evidence)}
+        e = Evidence(**{n: None for n in names if n != "full_text"})
+        e.authority, e.tag, e.page, e.source_id, e.knowledge_version = "canonical", "Rev", 129, "book_10", "v1"
+        e.figures = []
+        e.chapter = "Ch 4 Climactic Reversals: A Spike Followed by a Spike in the Opposite Direction"
+        cite = e.citation()
+        self.assertIn("· Ch 4 Climactic Reversals: A Spike Followed by a Spike in… ·", cite)   # whole words only

@@ -48,8 +48,18 @@ def chapter_heading(page_text: str) -> str | None:
     if len(matches) != 1:            # 0 = no chapter start; 2+ = table of contents
         return None
     m = CHAPTER_RE.search(page_text)
-    rest = [ln.strip() for ln in page_text[m.end():].splitlines() if ln.strip()][:2]
-    return re.sub(r"\s+", " ", f"Ch {matches[0].replace(' ', '')} {' '.join(rest)}")[:90].strip()
+    # the title is the block of lines after the heading, ended by a blank line (the body follows);
+    # taking a fixed number of lines pulled in body text such as a drop-cap fragment
+    title, lines = [], page_text[m.end():].splitlines()
+    for ln in lines:
+        if ln.strip():
+            title.append(ln.strip())
+        elif title:
+            break
+        if len(title) == 6:
+            break
+    title = re.sub(r"(\w)- (\w)", r"\1\2", " ".join(title))        # "Ex- isting" -> "Existing"
+    return re.sub(r"\s+", " ", f"Ch {matches[0].replace(' ', '')} {title}")[:90].strip()
 
 
 def page_weight(text: str) -> float:

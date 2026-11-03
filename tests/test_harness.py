@@ -93,6 +93,9 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(route({"text": "为什么 #3 是 H2？"}, {}), "study")
         self.assertEqual(route({"text": "以后请记住，所有 H2 都是高概率买点"}), "memory")
         self.assertEqual(route({"text": "x", "mode": "outcome"}), "outcome")
+        # the web Study tab always sends mode=study; "remember" must still become a candidate
+        self.assertEqual(route({"text": "请记住：我经常把 H1 当成 H2", "mode": "study"}), "memory")
+        self.assertEqual(route({"text": "为什么不是 H1？", "mode": "study"}), "study")
         self.assertEqual(find_annotation_ref("H2_001 为什么"), "H2_001")
         self.assertEqual(find_annotation_ref("#12 呢"), "#12")
         self.assertEqual(find_annotation_ref("SELL_CLIMAX_002?"), "SELL_CLIMAX_002")

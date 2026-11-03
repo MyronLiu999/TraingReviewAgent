@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import tomllib
+import unittest
 import urllib.parse
 from http.server import ThreadingHTTPServer
 
@@ -137,6 +138,8 @@ class TelegramTests(FixtureCase):
         self.assertIn("含义", tg.sent[-1])
         self.bot.handle_incoming({"text": "/study 解释 H2"})
         self.assertIn("BROOKS SOURCE", tg.sent[-1])
+        self.assertNotIn("**", tg.sent[-1])                                 # Markdown bold -> <b>
+        self.assertIn("<b>", tg.sent[-1])
         self.bot.handle_incoming({"text": "/memory"})
         self.assertIn("候选", tg.sent[-1])
         self.bot.handle_incoming({"image": "file1", "text": "/decide"})
@@ -145,6 +148,25 @@ class TelegramTests(FixtureCase):
         self.bot.check_text = lambda text: called.setdefault("news", text)    # plain text still = news check
         self.bot.handle_incoming({"text": "Fed cuts rates by 50bp"})
         self.assertEqual(called["news"], "Fed cuts rates by 50bp")
+
+
+class TelegramFormatTests(unittest.TestCase):
+    def test_bold_is_converted_and_html_escaped(self):
+        from telegram_bot import md_to_html
+        self.assertEqual(md_to_html("**回答** a < b & c"), "<b>回答</b> a &lt; b &amp; c")
+
+    def test_long_answers_are_split_not_cut(self):
+        from telegram_bot import LIMIT, md_to_html, split_message
+        text = md_to_html("\n".join(f"**第{i}行** " + "复盘&分析<>" * 40 for i in range(60)))
+        parts = split_message(text)
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(len(p) <= LIMIT for p in parts))
+        self.assertEqual("\n".join(parts), text)                  # nothing lost
+        self.assertTrue(all(p.count("<b>") == p.count("</b>") for p in parts))
+        one_line = md_to_html("&" * 9000)                           # no line breaks at all
+        parts = split_message(one_line)
+        self.assertEqual("".join(parts), one_line)
+        self.assertTrue(all(p.startswith("&amp;") and p.endswith(";") for p in parts))   # never inside &amp;
 
 
 class CompatibilityTests(FixtureCase):
@@ -186,3 +208,12 @@ class CompatibilityTests(FixtureCase):
         finally:
             os.environ.pop("TEST_KEY_A", None)
             os.environ.pop("TEST_KEY_B", None)
+
+    def test_emoji_output_survives_a_gbk_pipe(self):
+        import subprocess
+        import sys
+        code = "from main import safe_console; safe_console(); print('\\u2705 复盘助手已启动 🤔')"
+        r = subprocess.run([sys.executable, "-c", code], cwd=PROJECT, capture_output=True,
+                           env={**os.environ, "PYTHONIOENCODING": "gbk"})
+        self.assertEqual(r.returncode, 0, r.stderr.decode("gbk", "replace"))
+        self.assertIn("复盘助手已启动".encode("gbk"), r.stdout)

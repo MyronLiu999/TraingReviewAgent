@@ -28,7 +28,7 @@ from analyzer import Analyzer
 from chart_review import ChartReviewer, store_review
 from feeds import NewsItem, fetch_all
 from store import Store
-from telegram_bot import Telegram, format_alert
+from telegram_bot import Telegram, format_alert, md_to_html
 
 log = logging.getLogger("news_bot")
 
@@ -72,6 +72,16 @@ def load_env(path: str = ".env") -> None:
                 os.environ[k] = v
             else:
                 os.environ.setdefault(k, v)
+
+
+def safe_console() -> None:
+    """When output goes to a pipe or file, Windows uses the system code page (e.g. GBK), which
+    cannot encode emoji like ✅ and would crash the program. Replace such characters instead."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 def parse_markets(args: list[str]) -> list[str]:
@@ -161,7 +171,7 @@ class Bot:
             elif not out["ok"]:
                 raise RuntimeError(out["error"])
             elif out["mode"] == "decision":
-                self.notify("🎯 <b>交易决策（仅分析，不下单）</b>\n" + html.escape(out["text"]))
+                self.notify("🎯 <b>交易决策（仅分析，不下单）</b>\n" + md_to_html(out["text"]))
                 return
             else:
                 img, meta, analysis = Image.open(out["image_path"]), out["meta"], out["text"]
@@ -209,7 +219,7 @@ class Bot:
         elif not out["ok"]:
             self.notify(f"❌ {html.escape(out['error'])}")
         else:
-            self.notify(html.escape(out["text"]))
+            self.notify(md_to_html(out["text"]))
 
     def handle_message(self, text: str) -> None:
         if not text.startswith("/"):
@@ -354,6 +364,7 @@ class Bot:
 
 
 def main() -> None:
+    safe_console()
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     load_env()
