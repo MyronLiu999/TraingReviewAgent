@@ -240,3 +240,14 @@ class RefineFallbackTests(unittest.TestCase):
             self.assertEqual(spec["annotations"][0]["annotation_id"], "H2_001")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_study_material_with_braces_does_not_break_the_prompt(self):
+        tmp = tempfile.mkdtemp(prefix="braces_")
+        try:
+            with open(os.path.join(tmp, "notes.md"), "w", encoding="utf-8") as f:
+                f.write("My notes {H2} and {} and {knowledge_x}")
+            reviewer = cr.ChartReviewer({"docs_folder": tmp, "knowledge_base_folder": ""}, llm=object())
+            self.assertIn("My notes {H2} and {} and {knowledge_x}", reviewer.system)
+            self.assertNotIn("{knowledge}", reviewer.system)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

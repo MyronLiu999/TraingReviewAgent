@@ -662,8 +662,8 @@ def render(chart: Image.Image, spec: dict) -> Image.Image:
         pad = 6 * unit
         if max_w:
             text = wrap_text(d, text, f, max_w)
-        box = d.multiline_textbbox((x, y), text, font=f, spacing=4)
-        bw, bh = box[2] - box[0], box[3] - box[1]
+        tb = d.multiline_textbbox((0, 0), text, font=f, spacing=4)
+        bw, bh = tb[2] - tb[0], tb[3] - tb[1]
         x = min(max(x, pad), w - bw - pad)  # keep inside the image
         y = min(max(y, pad), h - bh - pad)
         for _ in range(12):  # nudge down/up to avoid overlapping earlier labels
@@ -676,7 +676,8 @@ def render(chart: Image.Image, spec: dict) -> Image.Image:
         ImageDraw.Draw(layer).rounded_rectangle(box, radius=6 * unit, fill=bg,
                                                 outline=RGB[color] + (255,), width=max(1, round(2 * unit)))
         img.alpha_composite(layer)
-        d.multiline_text((x, y), text, font=f, fill=RGB[color], spacing=4)
+        # offset by the text's own bbox origin so the text sits exactly inside the box
+        d.multiline_text((x - tb[0], y - tb[1]), text, font=f, fill=RGB[color], spacing=4)
         return box
 
     for zn in spec.get("zones", []):
@@ -733,7 +734,8 @@ class ChartReviewer:
             log.info("Loaded %d characters of study material from docs/", len(docs))
         if extra_knowledge:
             knowledge += "\n" + extra_knowledge
-        self.system = SYSTEM_PROMPT.format(knowledge=knowledge)
+        # replace() rather than format(): study material may contain { } characters
+        self.system = SYSTEM_PROMPT.replace("{knowledge}", knowledge)
 
     def _ask(self, content: list, recorder=None) -> dict:
         return self.llm.json_call(system=self.system, content=content, schema_name="chart_review",
