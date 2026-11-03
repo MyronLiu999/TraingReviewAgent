@@ -4,3 +4,8 @@ __pycache__/
 *.log
 .venv/
 reviews/2*/
+
+docs/**/*.pdf
+data/
+backups/
+evaluation/runs/

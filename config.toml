@@ -5,12 +5,33 @@ open_browser = true                # open the browser automatically on start
 
 # ---------------- Chart review (复盘) ----------------
 # Send the Telegram bot a chart screenshot and it replies with an annotated review chart.
-review_model          = "gpt-4o"   # must be an OpenAI model that can read images
+review_model          = "gpt-6-luna"   # must be an OpenAI model that can read images (study/decision use it too unless set)
 review_refine_passes  = 1          # extra self-check rounds to fix label positions (0 = faster/cheaper)
 review_send_full_resolution = true # also send the review as a file (Telegram compresses photos)
-knowledge_base        = "knowledge" # structured rule base (Rule IDs + decision framework). Point it at your
-                                    # own base when ready, e.g. "D:/Uchicago Courses/Trading/TradingAIKnowledgeBase"
-docs_folder           = "docs"     # extra study material (.md, .txt, .pdf), added after the knowledge base
+docs_folder           = "docs"     # your study material (.md, .txt, .pdf) used as the knowledge base
+# Al Brooks knowledge base (built from the books). The primer file is put into every review prompt;
+# the other files in this folder are the full reference. Leave empty to use the short built-in primer.
+# While the primer loads, PDFs in docs_folder are skipped (they are the raw books); .md/.txt notes still load.
+knowledge_base_folder = "D:/Uchicago Courses/Trading/TradingAIKnowledgeBase"
+knowledge_primer      = "11_REVIEW_AGENT_PRIMER.md"
+review_snap_targets   = true       # nudge arrows/rings onto the nearest candle high/low (records the original spot)
+review_auto_layout    = true       # move labels next to their bars, into empty space (records the model's spot)
+
+# ---------------- Brooks Coach: Study / Review / Decision ----------------
+# Versioned, hash-checked, read-only Brooks knowledge (managed only with: python -m knowledge.admin ...).
+canonical_store         = "D:/Uchicago Courses/Trading/BrooksCanonicalKB"
+knowledge_upload_folder = "D:/Uchicago Courses/Trading/TradingKnowledgeUpload"  # extracted text (admin import only)
+data_folder             = "data"   # memory.db, agent.db, traces, case files (never inside canonical_store)
+study_model             = ""       # empty = same as review_model
+decision_model          = ""       # empty = same as review_model; must read images
+rag_top_canonical       = 6        # Brooks pages per answer
+rag_top_derived         = 4        # derived-note sections per answer
+rag_char_budget         = 16000    # max characters of retrieved text per prompt
+study_attach_figures    = 1        # attach up to N original book chart pages to study answers (0 = off)
+decisive_style          = true     # decision mode: conclusion first (LONG / SHORT / WAIT), then evidence
+llm_timeout_seconds     = 300
+llm_max_output_tokens   = 20000    # reasoning models (gpt-5.x / gpt-6) count their thinking as output
+# Optional cost logging, USD per 1M tokens: [pricing] "gpt-4o" = [input, output]
 
 # ---------------- News alerts ----------------
 enable_news_alerts = true          # false = only do chart reviews

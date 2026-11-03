@@ -1,6 +1,16 @@
-# Trading Review Agent 交易复盘助手
+# Trading Review Agent · Al Brooks 私人交易教练
 
-把行情截图交给它，它会在图上标注出 **Al Brooks 价格行为**风格的复盘图：
+三种模式，共用一套**受保护的 Al Brooks 原典知识库**和你的**长期学习记忆**：
+
+| 模式 | 做什么 |
+|---|---|
+| 📊 **复盘 Review** | 截图 → 在原图上标注价格行为结构，每个标注有编号（#1、#2…）可追问、可质疑、改动留版本 |
+| 📖 **学习 Study** | 问任何 Brooks 理论问题：先直接回答，再讲原理、结合图表、常见错误；每条结论标注 `[BROOKS SOURCE]` 等来源和书页 |
+| 🎯 **决策 Decision** | 当前行情：明确给出 **LONG / SHORT / WAIT**，附入场条件、止损逻辑、目标、风险收益、失效条件（**只分析，不下单**） |
+
+架构、数据结构和全部操作说明见 **[ARCHITECTURE.md](ARCHITECTURE.md)**。
+
+复盘图里有：
 - 用色块标出市场阶段：**Always In Long**（绿）、**Always In Short**（红）、**交易区间**（蓝框）
 - 用圆圈标出关键 K 线：高潮、反转点、双顶/双底、更高低点/更低高点
 - 用带箭头的标签说明每个形态（英文术语 + 中文解释）
@@ -34,37 +44,53 @@
 1. 输入你设的密码登录。
 2. 在交易软件里截图（Windows：`Win+Shift+S`；Mac：`⌘+Shift+4`），回到网页按 **Ctrl+V**（Mac：**⌘+V**）粘贴。也可以把图片拖进来，或点击选择文件。
 3. 可选：写一句说明，例如 `MYM 5分钟，我在高点做空，止损被打`。
-4. 点 **开始复盘**。30–90 秒后显示复盘图、复盘分析和总结。
-5. 左侧是**历史复盘**，点开随时回看。可以下载复盘图，也可以一键发送到 Telegram。
+4. 点 **开始复盘**。30–120 秒后显示复盘图、复盘分析和总结。
+5. 复盘后就是一段**持续对话**：点任意标注（如 **#3 H2**）或用快捷按钮（整体逻辑 / 为什么这个方向 / 其他解释 / 什么会让你改判），也可以直接质疑「我觉得右边已经是交易区间了」「#2 标错了，因为…」。每次回答都有：
+   - **推理过程**：观察（哪根K线）→ 依据（Brooks 原则 + 书页）→ 推断
+   - **对你观点的判断**：同意 / 部分同意 / 不同意，以及理由（不会因为你反驳就附和）
+   - **考虑过的其他解释**、**什么情况会让它改变判断**、**把握程度**
+   - 结尾可能**反问你一个问题**；你回答后它会接着你的回答讲
+   
+   它真的改变判断时，标注存成新版本、整体判断记为修订，原始判断和旧图都保留。决策结果和学习页同样可以连续追问。
+6. 事后可以在「后续结果」里写下行情怎么走的，教练会对比当时的判断（不会改动原判断），总结出的经验只进入**候选区**。
+7. **学习**页提问理论；**决策**页上传当前行情（可附 OHLC CSV）；**记忆**页查看、批准、拒绝、删除教练记住的东西。
+8. 左侧是**历史复盘**，点开随时回看。可以下载复盘图，也可以一键发送到 Telegram。
 
 以后每次使用，只要双击 `start.bat` 就行。**使用期间保持那个黑色窗口开着**，关掉窗口就停止。
 
 ---
 
-## 📚 知识库与规则
+## 📚 你的学习资料
 
-每次复盘，AI 都要**按决策框架逐步分析**：先判断市场背景，再找关键结构、交易机会和应避免的交易，最后给出当前状态。复盘图上的每个标签都会注明依据的规则编号，例如 `[PA-H-002]`。网页下方的"依据的规则"列出每条规则在这张图上是否成立（成立 / 部分成立 / 不成立），以及原因。
+把资料放进 `docs/` 文件夹（支持 `.md`、`.txt`、`.pdf`）。每次复盘都会读取这些资料，并优先使用资料里的术语和规则。资料改了不用重启。
 
-- `knowledge/`：起步版规则库，包含决策框架和 34 条 `Rule ID` 规则（市场结构、形态、出入场、心理）。
-  ⚠️ 这套规则由 AI 根据 Al Brooks 体系的通用知识整理，**还没有对照你收集的原书核实，没有页码**。
-- 你用原书建立的知识库完成后，在 `config.toml` 里改一行即可替换：
-  `knowledge_base = "D:/Uchicago Courses/Trading/TradingAIKnowledgeBase"`
-  （读取该文件夹里所有 `.md` 文件；`00_` 和 `07_` 开头的文件会放在最前面）
-- `docs/`：其他补充资料（`.md`、`.txt`、`.pdf`），会附在知识库后面。
-
-资料改了不用重启，下一次复盘就会生效。
+**Al Brooks 原典知识库（Canonical KB，只读）**：`config.toml` 的 `canonical_store`（默认 `D:/Uchicago Courses/Trading/BrooksCanonicalKB`）。
+- 里面是经批准的教材抽取文字（逐页、带页码）和 AI 整理笔记（标为派生知识）的**只读快照**，每个文件都有 SHA-256 记录，启动时自动校验。
+- 聊天、复盘、反思、你的观点都**不会**写进去；只有你在终端里输入授权短语的管理命令才能创建新版本或回滚：
+  ```powershell
+  .venv\Scripts\python -m knowledge.admin status
+  .venv\Scripts\python -m knowledge.admin verify          # 加 --full 连原始 PDF 一起校验
+  ```
+- 复盘时用其中的 `11_REVIEW_AGENT_PRIMER.md`（读图规则）；学习/解释/决策时按问题检索原书页面并给出页码。
+- `docs/` 里的 `.md`/`.txt` 笔记会作为 `[USER NOTE]` 一起使用；知识库可用时 `docs/` 里的原书 PDF 会被跳过（它们就是知识库的来源）。
 
 ## ⚙️ 设置（`config.toml`，可选）
 
 | 设置 | 说明 |
 |---|---|
-| `review_model = "gpt-4o"` | 读图用的模型 |
+| `review_model = "gpt-4o"` | 读图用的模型（`study_model` / `decision_model` 为空时也用它） |
+| `canonical_store` | Brooks 原典知识库位置（只读） |
+| `data_folder = "data"` | 记忆、任务记录、日志的位置 |
+| `decisive_style = true` | 决策模式先给结论再给证据 |
+| `review_snap_targets = true` | 把箭头吸附到最近的 K 线高/低点（记录原位置） |
+| `review_auto_layout = true` | 把标签自动放到所指 K 线旁边的空白处，避开K线、其他标签和箭头；总结框放到最空的区域（记录模型原位置） |
+| `llm_max_output_tokens = 20000` | 推理型模型（gpt-5.x / gpt-6）的"思考"也算输出，太小会被截断 |
 | `review_refine_passes = 1` | 自我纠错轮数；`0` 更快更便宜，但标注位置可能偏一些 |
 | `web_port = 8000` | 网页端口 |
 | `web_host = "127.0.0.1"` | 改成 `"0.0.0.0"` 后，同一 Wi-Fi 下的手机或平板也能访问（用电脑的局域网 IP） |
 | `enable_news_alerts` | `false` = 关闭新闻提醒 |
 
-**费用：** 每张复盘图大约 US$0.10–0.20（gpt-4o，含知识库和一轮纠错），以 OpenAI 账单为准。知识库越大，费用越高。
+**费用：** 每张复盘图大约 US$0.03–0.08（gpt-4o，含一轮纠错），以 OpenAI 账单为准。
 
 **注意：** AI 读图会有误差，标注位置和形态判断不一定完全准确。请把它当作复盘参考，不是交易建议。
 
@@ -79,14 +105,26 @@
 | 浏览器没有自动打开 | 手动打开 http://localhost:8000 |
 | 端口被占用 | 把 `config.toml` 里的 `web_port` 改成 8001 之类 |
 
-不打开网页也能测试：`python chart_review.py 我的图.png --note "MYM 5分钟"`，结果保存在 `reviews/` 文件夹。
+不打开网页也能用命令行（PowerShell）：
+```powershell
+.venv\Scripts\python agent_cli.py review 我的图.png --note "MYM 5分钟"
+.venv\Scripts\python agent_cli.py explain "为什么 #3 是 H2？"
+.venv\Scripts\python agent_cli.py ask "我觉得右边已经是交易区间了"
+.venv\Scripts\python agent_cli.py chat      # 连续对话，直接回车退出
+.venv\Scripts\python agent_cli.py study "请解释 H2 和两段式回调"
+.venv\Scripts\python agent_cli.py decide 我的图.png "现在偏多还是偏空？"
+.venv\Scripts\python agent_cli.py memory list
+```
+旧命令 `python chart_review.py 我的图.png --note "..."` 仍然可用。运行全部测试：`.venv\Scripts\python -m unittest discover -s tests -t .`
 
 ---
 
 ## 📱 Telegram（可选）
 
 在 `.env` 里填上 `TELEGRAM_BOT_TOKEN`（从 @BotFather 获取，步骤见下方 "Create your Telegram bot"），并先给你的机器人发一句 `hi`。启动时会自动获取 chat ID，Telegram 机器人会和网页一起在后台运行：
-- 在 Telegram 里发截图，也能收到复盘图（和网页共用历史记录）
+- 在 Telegram 里发截图，也能收到复盘图（和网页共用历史记录）；图片说明写 `/decide` 则做交易决策分析
+- `/study 问题`、`/explain #3 为什么是 H2`、`/ask 追问`、`/outcome 后来涨了 30 点`、`/memory`、`/approve 编号`、`/reject 编号`
+- **直接回复教练的消息**就会接着讨论刚才那张图（不回复的普通文字仍然是新闻分析）
 - 新闻提醒（见下方）
 - 以后的入场 / 出场提醒会走这里
 

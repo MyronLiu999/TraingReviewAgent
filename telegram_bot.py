@@ -53,7 +53,7 @@ class Telegram:
 
     def incoming(self) -> list[dict]:
         """New messages from the configured chat (others are ignored).
-        Each is {"text": str, "image": file_id or None}."""
+        Each is {"text": str, "image": file_id or None, "reply_to_bot": bool}."""
         try:
             r = requests.get(f"{self.base}/getUpdates", timeout=15,
                              params={"offset": self.offset, "timeout": 0})
@@ -73,8 +73,9 @@ class Telegram:
             elif (msg.get("document") or {}).get("mime_type", "").startswith("image/"):
                 image = msg["document"]["file_id"]  # image sent as a file (full quality)
             text = (msg.get("text") or msg.get("caption") or "").strip()
+            reply_to_bot = bool(((msg.get("reply_to_message") or {}).get("from") or {}).get("is_bot"))
             if text or image:
-                out.append({"text": text, "image": image})
+                out.append({"text": text, "image": image, "reply_to_bot": reply_to_bot})
         return out
 
 
