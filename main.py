@@ -35,6 +35,14 @@ log = logging.getLogger("news_bot")
 HELP = """📊 <b>Chart review 复盘</b>
 Send me a chart screenshot (photo, or as a file for full quality).
 Add a caption for context, e.g. "MYM 5分钟，我在高点做空" — I'll reply with an annotated review chart.
+Caption "/decide" (or "现在做多还是做空？") — LONG / SHORT / WAIT plan instead (analysis only).
+
+<b>Brooks coach 教练</b>
+/study 问题 — theory question with book citations, e.g. /study 解释 H2 和两段回调
+/explain #3 为什么是 H2？ — explain (or dispute) a mark on the last chart
+/ask 你的问题 — keep discussing the last chart (or reply directly to the coach's message)
+/outcome 后来涨了 30 点 — record what happened; lessons go to the candidate list
+/memory — pending candidate insights;  /approve 5  /reject 5
 
 <b>News commands</b>
 /market equity — judge news for stocks
@@ -49,13 +57,21 @@ Or just paste any headline, tweet or article text and I'll analyze it right away
 
 
 def load_env(path: str = ".env") -> None:
+    """Loads .env into the environment. A variable that is already set wins, except obvious
+    placeholders (fewer than 3 characters, e.g. a leftover Windows variable), which .env replaces."""
     if not os.path.exists(path):
         return
     for line in open(path, encoding="utf-8"):
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            k, v = k.strip(), v.strip().strip('"').strip("'")
+            existing = os.environ.get(k)
+            if existing is not None and len(existing.strip()) < 3 and len(v) >= 3:
+                log.warning("Environment variable %s looks like a placeholder; using the value from .env", k)
+                os.environ[k] = v
+            else:
+                os.environ.setdefault(k, v)
 
 
 def parse_markets(args: list[str]) -> list[str]:
@@ -74,11 +90,32 @@ def parse_markets(args: list[str]) -> list[str]:
 
 
 class Bot:
-    def __init__(self, cfg: dict, tg: Telegram | None):
+    def __init__(self, cfg: dict, tg: Telegram | None, agent=None):
         self.cfg = cfg
         self.tg = tg
         self.store = Store()
         self.analyzer = Analyzer(cfg)
+        self._agent = agent
+        self.coach_session = None
+
+    @property
+    def agent(self):
+        """The Brooks coach (created on first use; None if it cannot start)."""
+        if self._agent is None:
+            try:
+                from agent.runtime import CoachAgent
+                self._agent = CoachAgent(self.cfg, project_dir=os.path.dirname(os.path.abspath(__file__)))
+            except Exception:
+                log.exception("Coach unavailable; falling back to the plain chart review")
+                self._agent = False
+        return self._agent or None
+
+    def coach(self, request: dict) -> dict | None:
+        if not self.agent:
+            return None
+        out = self.agent.handle({**request, "session_id": self.coach_session, "source": "telegram"})
+        self.coach_session = out.get("session_id")
+        return out
 
     # ---------- settings (persist across restarts) ----------
     @property
@@ -103,26 +140,76 @@ class Bot:
     def handle_incoming(self, msg: dict) -> None:
         if msg.get("image"):
             self.review_chart(msg["image"], msg.get("text", ""))
+        elif msg.get("text") and msg.get("reply_to_bot") and not msg["text"].startswith("/"):
+            self.coach_command("/ask", msg["text"])     # replying to the coach continues the discussion
         elif msg.get("text"):
             self.handle_message(msg["text"])
 
     def review_chart(self, file_id: str, note: str) -> None:
-        self.notify("📊 收到图表，正在复盘，大约需要 30-90 秒…")
+        decide = note.lower().startswith("/decide")
+        self.notify("🎯 收到图表，正在做交易决策分析…" if decide else "📊 收到图表，正在复盘，大约需要 30-120 秒…")
         try:
             chart = Image.open(io.BytesIO(self.tg.download(file_id)))
-            img, spec = ChartReviewer(self.cfg).review(chart, note)  # re-reads docs/ each time
+            if decide:
+                note = note[len("/decide"):].strip() or "现在我应该更关注做多还是做空？"
+            out = self.coach({"image": chart, "text": note, "note": note,
+                              **({"mode": "decision"} if decide else {})})
+            if out is None:   # coach unavailable: the original single-call review
+                img, spec = ChartReviewer(self.cfg).review(chart, note)
+                meta = store_review(chart, img, spec, note, source="telegram")
+                analysis = spec.get("analysis", "")
+            elif not out["ok"]:
+                raise RuntimeError(out["error"])
+            elif out["mode"] == "decision":
+                self.notify("🎯 <b>交易决策（仅分析，不下单）</b>\n" + html.escape(out["text"]))
+                return
+            else:
+                img, meta, analysis = Image.open(out["image_path"]), out["meta"], out["text"]
         except Exception as e:
             log.exception("Chart review failed")
             self.notify(f"❌ 复盘失败：{html.escape(str(e))}")
             return
-        meta = store_review(chart, img, spec, note, source="telegram")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         self.tg.send_photo(buf.getvalue(), caption="复盘图 Review")
         if self.cfg.get("review_send_full_resolution", True):
             self.tg.send_photo(buf.getvalue(), caption="原图分辨率（可放大查看）", as_file=True)
-        self.notify("🧠 <b>复盘分析</b>\n" + html.escape(spec.get("analysis", "")))
+        self.notify("🧠 <b>复盘分析</b>\n" + html.escape(analysis))
         log.info("Review saved: %s", meta["id"])
+
+    def coach_command(self, cmd: str, arg: str) -> None:
+        if cmd in ("/memory", "/approve", "/reject"):
+            if not self.agent:
+                self.notify("❌ 教练模块不可用")
+                return
+            mem = self.agent.memory
+            if cmd == "/memory":
+                rows = mem.candidates("candidate")[:15]
+                self.notify("🟡 <b>候选经验</b>（/approve 编号 或 /reject 编号）\n" + "\n".join(
+                    f"#{c['id']} [{c['kind']}] {html.escape(c['content'][:150])}" for c in rows)
+                    if rows else "没有待处理的候选。")
+            elif arg.isdigit():
+                try:
+                    if cmd == "/approve":
+                        self.notify(f"✅ 已批准 → {mem.approve_candidate(int(arg), approved_by='telegram-owner')}")
+                    else:
+                        mem.reject_candidate(int(arg), "rejected in Telegram")
+                        self.notify(f"已拒绝候选 #{arg}")
+                except ValueError as e:
+                    self.notify(f"❌ {html.escape(str(e))}")
+            return
+        if not arg:
+            self.notify(HELP)
+            return
+        mode = {"/study": "study", "/ask": None, "/explain": "explain", "/outcome": "outcome"}[cmd]
+        self.notify("⏳ 正在检索教材…" if mode == "study" else "⏳ 教练正在思考…")
+        out = self.coach({"text": arg, **({"mode": mode} if mode else {})})   # /ask: discuss the last chart, else study
+        if out is None:
+            self.notify("❌ 教练模块不可用")
+        elif not out["ok"]:
+            self.notify(f"❌ {html.escape(out['error'])}")
+        else:
+            self.notify(html.escape(out["text"]))
 
     def handle_message(self, text: str) -> None:
         if not text.startswith("/"):
@@ -130,7 +217,10 @@ class Bot:
             return
         cmd, *args = text.split()
         cmd = cmd.split("@")[0].lower()
-        if cmd == "/market" and args:
+        if cmd in ("/study", "/ask", "/explain", "/outcome", "/memory", "/approve", "/reject"):
+            rest = text.split(None, 1)
+            self.coach_command(cmd, rest[1].strip() if len(rest) > 1 else "")
+        elif cmd == "/market" and args:
             markets = parse_markets(args)
             self.store.set_setting("markets", markets)
             self.notify(f"✅ Now analyzing for: <b>{', '.join(markets)}</b>")
