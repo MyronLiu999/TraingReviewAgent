@@ -31,7 +31,7 @@ from urllib.parse import parse_qs
 from PIL import Image
 
 from chart_review import REVIEWS_DIR, list_reviews
-from main import Bot, load_env
+from main import Bot, load_env, safe_console
 from telegram_bot import Telegram
 
 log = logging.getLogger("web")
@@ -217,7 +217,9 @@ async function api(path, body){
 const busy = (el, msg) => el.innerHTML = '<span class="spin"></span>' + msg;
 function bubble(box, role, text){
   const d = document.createElement("div"); d.className = "msg " + (role === "user" ? "user" : "coach");
-  d.innerHTML = '<div class="who">' + (role === "user" ? "你" : "教练") + "</div>"; d.appendChild(document.createTextNode(text));
+  // escape first, then turn the coach's **bold** headings into <b> (nothing else is rendered as HTML)
+  d.innerHTML = '<div class="who">' + (role === "user" ? "你" : "教练") + "</div>" +
+    esc(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
   $(box).appendChild(d); d.scrollIntoView({behavior:"smooth", block:"end"});
 }
 function ctrlEnter(id, btn){ $(id).addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $(btn).click(); }); }
@@ -596,6 +598,7 @@ def start_telegram_bot():
 
 def main():
     global CFG, TG, AGENT
+    safe_console()
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     load_env()

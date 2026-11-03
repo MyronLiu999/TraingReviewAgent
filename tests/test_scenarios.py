@@ -86,6 +86,7 @@ class ScenarioTests(FixtureCase):
         cands = agent.memory.candidates()
         claim = next(c for c in cands if c["kind"] == "user_claim")
         self.assertEqual((claim["status"], claim["source_type"]), ("candidate", "user"))
+        self.assertEqual(claim["content"], "所有 H2 都是高概率买点。")             # without "以后请记住，"
         self.assertEqual(agent.memory.profile(), [])
         self.assertEqual(agent.memory.rules(), [])
         self.assertEqual(before, tree_hashes(self.fx["root"]))

@@ -186,7 +186,7 @@ books, and if approved is stored as the user's own view (`user_view`), never as 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
-87 tests, all passing (2026-11-03), offline with a scripted model and a fixture canonical store, plus read-only
+93 tests, all passing (2026-11-03), offline with a scripted model and a fixture canonical store, plus read-only
 checks against the real store:
 
 | Suite | Covers |

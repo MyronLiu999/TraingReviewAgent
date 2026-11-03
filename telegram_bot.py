@@ -2,6 +2,7 @@
 
 import html
 import logging
+import re
 
 import requests
 
@@ -9,6 +10,38 @@ log = logging.getLogger(__name__)
 
 VERDICT_ICON = {"POSITIVE": "🟢", "NEGATIVE": "🔴", "NEUTRAL": "⚪", "MIXED": "🟡"}
 TIMING_LABEL = {"immediate": "immediate", "intraday": "intraday", "multi_day": "multi-day"}
+LIMIT = 4000   # Telegram allows 4096 characters per message
+
+
+def md_to_html(text: str) -> str:
+    """Coach answers use **bold** headings; Telegram (parse_mode HTML) needs <b>. Works line by
+    line, so a tag never spans a line break and messages can be split at any newline."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(text))
+
+
+def split_message(text: str, limit: int = LIMIT) -> list[str]:
+    """Splits a long message at line breaks (never inside a tag or an &entity;), instead of
+    cutting it off, so the end of a long answer (sources, the coach's question) still arrives."""
+    parts, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:                       # one very long line: cut at a safe spot
+            cut = limit
+            while cut > limit // 2 and (line.rfind("&", 0, cut) > line.rfind(";", 0, cut)
+                                        or line.rfind("<", 0, cut) > line.rfind(">", 0, cut)):
+                cut -= 1
+            if cur:
+                parts.append(cur)
+                cur = ""
+            parts.append(line[:cut])
+            line = line[cut:]
+        if cur and len(cur) + 1 + len(line) > limit:
+            parts.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur or not parts:
+        parts.append(cur)
+    return parts
 
 
 class Telegram:
@@ -18,17 +51,18 @@ class Telegram:
         self.offset = 0
 
     def send(self, text: str) -> None:
-        try:
-            r = requests.post(f"{self.base}/sendMessage", timeout=15, json={
-                "chat_id": self.chat_id,
-                "text": text[:4000],
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            })
-            if not r.ok:
-                log.error("Telegram send failed: %s %s", r.status_code, r.text[:200])
-        except requests.RequestException as e:
-            log.error("Telegram send failed: %s", e)
+        for part in split_message(text):
+            try:
+                r = requests.post(f"{self.base}/sendMessage", timeout=15, json={
+                    "chat_id": self.chat_id,
+                    "text": part,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                })
+                if not r.ok:
+                    log.error("Telegram send failed: %s %s", r.status_code, r.text[:200])
+            except requests.RequestException as e:
+                log.error("Telegram send failed: %s", e)
 
     def send_photo(self, image_bytes: bytes, caption: str = "", as_file: bool = False) -> None:
         """Sends an image. as_file=True sends it uncompressed (full resolution)."""
