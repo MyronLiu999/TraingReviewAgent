@@ -1,4 +1,7 @@
-"""Command line for the Brooks coach (same engine as the web UI and Telegram).
+"""TradingReview command line (same engine as the web UI and Telegram).
+
+    .venv\\Scripts\\python agent_cli.py trade chart.png "MES 5分钟 这里能不能做？" [--symbol MES] [--csv bars.csv --as-of ...]
+    .venv\\Scripts\\python agent_cli.py monitor [--csv bars.csv | --folder shots/] --symbol MES --timeframe 5m [--once]
 
     .venv\\Scripts\\python agent_cli.py study "请解释 H2 和两段式回调" [--depth brief|detailed|bar_by_bar|exercise]
     .venv\\Scripts\\python agent_cli.py review chart.png --note "MYM 5分钟"
@@ -59,6 +62,37 @@ def show(out: dict) -> None:
     print("\n" + json.dumps(extra, ensure_ascii=False))
 
 
+def monitor_cmd(agent, cfg, args, sid) -> None:
+    """Live monitoring from the command line (Ctrl+C stops). Settings: [monitor] in config.toml,
+    overridden by the flags. Alerts go to Telegram when it is configured, otherwise to this window."""
+    from monitor import ConsoleNotifier, Monitor, TelegramNotifier, make_feed
+    mcfg = dict(cfg.get("monitor") or {})
+    if args.csv:
+        mcfg.update(source="csv", csv_path=args.csv)
+    if args.folder:
+        mcfg.update(source="screenshots", screenshot_folder=args.folder)
+    for key in ("symbol", "timeframe"):
+        if getattr(args, key):
+            mcfg[key] = getattr(args, key)
+    if args.interval:
+        mcfg["poll_seconds"] = args.interval
+    notifier = ConsoleNotifier()
+    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN", ""), os.environ.get("TELEGRAM_CHAT_ID", "")
+    if mcfg.get("notify_channel", "telegram") == "telegram" and token and chat and "..." not in token:
+        from telegram_bot import Telegram
+        notifier = TelegramNotifier(Telegram(token, chat))
+    mon = Monitor(agent, make_feed(mcfg), notifier, mcfg, session_id=sid)
+    if args.once:
+        for ev in mon.step():
+            print(json.dumps(ev, ensure_ascii=False))
+        return
+    print(f"监控中：{mon.feed.symbol} {mon.feed.timeframe}（{mon.feed.name}），每 {mon.poll_seconds:g} 秒检查一次，Ctrl+C 停止")
+    try:
+        mon.run_forever()
+    except KeyboardInterrupt:
+        pass
+
+
 def memory_cmd(agent, args) -> None:
     mem, act, arg = agent.memory, args.action, args.arg
     if act == "list":
@@ -99,9 +133,13 @@ def main() -> None:
     p = sub.add_parser("study"); p.add_argument("question"); p.add_argument("--depth", default="detailed")
     p = sub.add_parser("review"); p.add_argument("image"); p.add_argument("--note", default="")
     p = sub.add_parser("explain"); p.add_argument("question"); p.add_argument("--case"); p.add_argument("--ann")
-    p = sub.add_parser("decide"); p.add_argument("image", nargs="?"); p.add_argument("question", nargs="?",
-                                                                                   default="现在我应该更关注做多还是做空？")
-    p.add_argument("--csv"); p.add_argument("--as-of")
+    for name in ("trade", "decide"):          # "decide" = the old name, kept working
+        p = sub.add_parser(name); p.add_argument("image", nargs="?")
+        p.add_argument("question", nargs="?", default="现在这里能不能做？如果做，在哪里入场、止损放哪、目标在哪？")
+        p.add_argument("--csv"); p.add_argument("--as-of"); p.add_argument("--symbol")
+    p = sub.add_parser("monitor"); p.add_argument("--csv"); p.add_argument("--folder")
+    p.add_argument("--symbol"); p.add_argument("--timeframe"); p.add_argument("--once", action="store_true")
+    p.add_argument("--interval", type=float)
     p = sub.add_parser("ask"); p.add_argument("question"); p.add_argument("--case")
     sub.add_parser("chat")
     p = sub.add_parser("outcome"); p.add_argument("case_id"); p.add_argument("text")
@@ -132,8 +170,8 @@ def main() -> None:
     elif args.cmd == "explain":
         show(run({"mode": "explain", "text": args.question, **({"case_id": args.case} if args.case else {}),
                   **({"annotation_id": args.ann} if args.ann else {})}))
-    elif args.cmd == "decide":
-        req = {"mode": "decision", "text": args.question}
+    elif args.cmd in ("trade", "decide"):
+        req = {"mode": "decision", "text": args.question, **({"symbol": args.symbol} if args.symbol else {})}
         if args.image:
             req["image_path"] = args.image
         if args.csv:
@@ -141,6 +179,8 @@ def main() -> None:
         if args.as_of:
             req["as_of"] = args.as_of
         show(run(req))
+    elif args.cmd == "monitor":
+        monitor_cmd(agent, cfg, args, sid)
     elif args.cmd == "ask":
         show(run({"text": args.question, **({"case_id": args.case} if args.case else {})}))
     elif args.cmd == "chat":

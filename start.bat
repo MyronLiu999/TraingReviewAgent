@@ -1,4 +1,5 @@
 @echo off
+title TradingReview
 REM Windows: double-click this file. First run sets everything up, later runs just start the app.
 cd /d "%~dp0"
 if not exist .venv (

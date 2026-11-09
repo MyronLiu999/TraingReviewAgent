@@ -58,7 +58,7 @@ class WebTests(FixtureCase):
         ck = self.login()
         status, _, page = self.req("GET", "/", cookie=ck)
         self.assertEqual(status, 200)
-        for word in ("复盘 Review", "学习 Study", "决策 Decision", "记忆 Memory"):
+        for word in ("交易助手 Trade", "复盘 Review", "学习 Study", "记忆 Memory", "TradingReview"):
             self.assertIn(word, page.decode())
         self.assertEqual(self.req("GET", "/api/reviews", cookie=ck)[0], 200)
 
@@ -95,6 +95,25 @@ class WebTests(FixtureCase):
         case = json.loads(self.req("GET", f"/api/case/{meta['id']}", cookie=ck)[2])
         self.assertEqual(case["case_id"], meta["id"])
         self.assertEqual(self.req("GET", "/api/case/../../etc", cookie=ck)[0], 404)
+
+
+    def test_trade_tab_over_http(self):
+        ck = self.login()
+        with open(self.chart, "rb") as f:
+            img = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+        status, _, raw = self.req("POST", "/api/decision", {"image": img, "symbol": "MES 5分钟",
+                                                            "text": "MES 5分钟 这里能不能做？"}, cookie=ck)
+        self.assertEqual(status, 200, raw)
+        out = json.loads(raw)
+        self.assertEqual(out["image_path"], "review.png")                 # no local paths sent to the browser
+        self.assertIn("TRADE PLAN", out["text"])
+        status, _, png = self.req("GET", f"/reviews/{out['case_id']}/review.png?1", cookie=ck)
+        self.assertEqual((status, png[:4]), (200, b"\x89PNG"))
+        hist = json.loads(self.req("GET", "/api/reviews", cookie=ck)[2])
+        self.assertEqual(hist[0]["mode"], "decision")
+        self.assertIn("TAKE", hist[0]["summary"])
+        status, _, raw = self.req("POST", "/api/discuss", {"case_id": out["case_id"], "text": "为什么止损放在这里？"}, cookie=ck)
+        self.assertEqual(status, 200, raw)
 
 
 class FakeTelegram:
@@ -144,6 +163,10 @@ class TelegramTests(FixtureCase):
         self.assertIn("候选", tg.sent[-1])
         self.bot.handle_incoming({"image": "file1", "text": "/decide"})
         self.assertIn("BIAS", tg.sent[-1])
+        n = len(tg.photos)
+        self.bot.handle_incoming({"image": "file1", "text": "/trade MES 5分钟"})
+        self.assertIn("交易计划", tg.sent[-1])
+        self.assertEqual(tg.photos[n:], [("交易计划 Trade plan", False)])   # the plan chart comes first
         called = {}
         self.bot.check_text = lambda text: called.setdefault("news", text)    # plain text still = news check
         self.bot.handle_incoming({"text": "Fed cuts rates by 50bp"})

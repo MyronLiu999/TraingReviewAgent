@@ -1,4 +1,8 @@
-# TradingReviewAgent — Al Brooks Coach Architecture (V1.0, 2026-11-02)
+# TradingReview — Al Brooks Trading Assistant Architecture (V1.1, 2026-11-09)
+
+V1.1 (2026-11-09): project renamed to **TradingReview**; the decision mode became the **trade assistant**
+(§13) with code-enforced TAKE / WAIT / NO_TRADE rules, trader's equation, position size and a plan chart;
+interfaces for **live monitoring** were added (§14). V1.0 (2026-11-02) is described in §1–§12.
 
 ## 1. Audit before the upgrade
 
@@ -186,7 +190,8 @@ books, and if approved is stored as the user's own view (`user_view`), never as 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
-93 tests, all passing (2026-11-03), offline with a scripted model and a fixture canonical store, plus read-only
+114 tests (2026-11-09; `test_trade` adds 21: TAKE/WAIT/NO_TRADE rules, trader's equation, sizing, symbols, plan
+chart geometry, routing, triggers, feeds, monitor loop and call limit, screenshot → plan chart flow). On 2026-11-03: 93 tests, all passing, offline with a scripted model and a fixture canonical store, plus read-only
 checks against the real store:
 
 | Suite | Covers |
@@ -200,6 +205,7 @@ checks against the real store:
 | `test_regression` | web login/pages/review/explain/study/memory over HTTP, Telegram photo/commands/news text, old config, legacy `ChartReviewer` API, `.env` placeholder |
 | `test_discussion` | follow-ups route to discuss with full reasoning, history + pending question reach the model, bare pushback does not flip a mark, reasoned challenge revises as v2, judgment revisions keep the hypothesis, decisions can be questioned, study asks back, Telegram reply continues |
 | `test_scenarios` | the seven acceptance scenarios |
+| `test_trade` | TAKE/WAIT/NO_TRADE vetoes, code-computed trader's equation, position size and caps, symbol roots, playbook + risk in the prompt, old decisions still format, plan chart lines / price→y fit / wrong geometry, trading-question routing, triggers (stop/limit entries, cancel, same-bar stop, breakeven, runner), CSV and screenshot feeds, monitor loop, model-call limit, screenshot → plan chart → follow-up |
 
 Real-model runs (not part of the unit tests) are in `evaluation/runs/<timestamp>/demo.md`.
 
@@ -220,5 +226,69 @@ Real-model runs (not part of the unit tests) are in `evaluation/runs/<timestamp>
 - Interactive training (hide marks, quiz the user, track performance) is not implemented (planned phase).
 - Clicking directly on the image is not implemented; marks are chosen from chips or by `#n` / id.
 - Tool timeouts cannot kill a running thread (the call is abandoned, the task fails).
-- `.env.example` (tracked by Git) still contains a real OpenAI key — move it to `.env` and rotate it.
-- Nothing has been committed.
+- `.env.example` now only holds placeholders. If a real key was ever committed in its history, rotate that key.
+- Live monitoring has interfaces and file-based feeds (§14) but no broker / vendor feed and no web panel yet.
+
+## 13. Trade assistant (decision mode, V1.1)
+
+Files: `coach/decision.py` (playbook prompt, schema, `validate_decision`, `position_size`, `format_decision`),
+`coach/plan_chart.py` (draws the plan), `agent/runtime.py::decide` (workflow), `agent/router.py` (trading questions).
+
+Flow: validate → retrieve (OHLC facts if given, learning memory, Brooks sources) → analyze (one vision call with
+the **Brooks playbook**: read chart → market cycle → always-in + location → setups for this context → signal bar →
+entry order type → stop → target 1 + runner → trader's equation → checklist → recommendation → management) →
+verify (code) → save (plan chart as `review.png`, case with `annotated_path`, discussion thread).
+
+Model output adds: `chart_read` (symbol, timeframe, last price, last bar), `market_cycle`, `location`,
+`recommendation` (TAKE / WAIT / NO_TRADE), `setup_quality` (A/B/C/none), `probability` class (high/even/low)
++ reason, `signal_bar` (quality, x), `entry.order_type`, `runner_target`, `key_levels`, `management`,
+`checklist` (pass/warn/fail), and a 0–1000 grid `y` for every level.
+
+Enforced by code (`validate_decision`):
+| Rule | Effect |
+|---|---|
+| WAIT bias | never a TAKE |
+| prices inconsistent with the direction / outside the OHLC range / unreadable screenshot | prices removed |
+| runner target on the wrong side | removed |
+| trader's equation: p × R/R − (1 − p) ≤ 0, or R/R below `min_rr_<class>` (p = 0.6 / 0.5 / 0.4) | TAKE → WAIT |
+| a checklist item with verdict `fail` | TAKE → WAIT |
+| setup grade below `[trading] min_setup_quality` | TAKE → WAIT |
+| 0 contracts fit the risk budget (stop too wide) | TAKE → NO_TRADE |
+| percentages not in the cited Brooks text | removed |
+
+Position size: `risk_budget = min(account_size × risk_per_trade_pct %, max_risk_per_trade)`; contracts =
+⌊budget / (|entry − stop| × point value)⌋, capped by `max_contracts`. The symbol comes from the chart read, the
+user's note or `default_symbol`; point values are built in for common futures and extendable in
+`[trading.point_values]`.
+
+Plan chart: levels with a price but no `y` are placed with a least-squares price → y fit from the levels that have
+both (needs two prices; a higher price must be higher on the screen, else no y is used); for a LONG the stop must
+be below and the targets above the entry on the screen (mirrored for SHORT), otherwise the trade lines are not drawn
+and the issue is reported.
+
+Channels: web tab **🎯 交易助手 Trade** (default tab; symbol field, quick follow-ups, plan image), Telegram photo
+caption `/trade …` or `/decide …` (plan image + text), CLI `agent_cli.py trade chart.png "…" [--symbol MES]`.
+
+## 14. Live monitoring interfaces (`monitor/`, next phase)
+
+```
+MarketFeed.poll() -> Snapshot(symbol, timeframe, as_of, csv | image_path, new_bars)
+        |
+Monitor.step():  check_plan(active plan, new_bars)  -> events (entry_triggered, target_hit, runner_target_hit,
+        |                                              stop_hit, breakeven_stop, cancelled) -> Notifier.send()
+        '------  analysis due? -> CoachAgent.handle(mode=decision, csv/as_of or image) -> new plan -> alert if
+                                  bias/recommendation changed (or notify = "all")
+```
+
+- `feeds.py`: `MarketFeed` (contract), `CsvFileFeed` (exported OHLC file, optional forming last bar),
+  `ScreenshotFolderFeed` (newest image), `BrokerFeed` (placeholder: implement `poll()` for IBKR / Tradovate /
+  Rithmic / TradingView webhook / Databento; credentials from `.env`; market data only), `make_feed([monitor])`.
+- `triggers.py`: pure functions; stop / limit / market entries; a stop hit before the entry cancels the plan; the
+  same bar touching stop and target counts as the stop; at target 1 half is taken and the stop moves to breakeven;
+  results in R (bar-level approximation, no slippage).
+- `runner.py`: model calls only on the first snapshot, after `reanalyze_every_bars`, after a plan finished / was
+  cancelled, or for a new screenshot; never while a plan is in a trade; at most `max_model_calls_per_hour`.
+  Finished plans are kept in `Monitor.trades` (case id, result in R) for later statistics.
+- `notifier.py`: `Notifier` contract, `ConsoleNotifier`, `TelegramNotifier`, `ListNotifier`.
+- Run: `agent_cli.py monitor [--csv file | --folder dir] --symbol MES --timeframe 5m [--once]`. The web UI does
+  not start it yet; next steps are a broker feed, a web panel (state, `log`, `trades`) and persisting the state.

@@ -146,7 +146,7 @@ def build_system(case: dict, view: dict, annotations: list[dict], focus: dict | 
         focus_txt = "No single mark; the question is about the chart / the analysis as a whole."
     hist = "\n".join(f"[{h['role']}] {h['content'][:1500]}" for h in history[-12:]) or "(first question)"
     return DISCUSS_SYSTEM.format(
-        label_rules=LABEL_RULES, original=json.dumps(original, ensure_ascii=False, indent=1)[:6000],
+        label_rules=LABEL_RULES, original=json.dumps(original, ensure_ascii=False, indent=1)[:9000],
         view=json.dumps(view, ensure_ascii=False, indent=1), marks=_marks(annotations), focus=focus_txt,
         history=hist, pending=pending or "(none)", learning=json.dumps(learning, ensure_ascii=False)[:2000],
         sources=wrap_untrusted(evidence) if evidence else "(no sources retrieved)")

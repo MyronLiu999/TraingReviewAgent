@@ -1,4 +1,4 @@
-"""Web UI for the Brooks coach (no extra packages needed).
+"""TradingReview web UI: Al Brooks trading assistant + coach (no extra packages needed).
 
     python web.py            -> open http://localhost:8000 and log in with APP_PASSWORD from .env
 
@@ -46,7 +46,7 @@ IMG_RE = re.compile(r"^/reviews/([^/]+)/(review|original|review_v\d{1,3})\.png$"
 FIG_RE = re.compile(r"^/figures/(book_\d{2}_p\d{1,5}\.png)$")
 
 LOGIN_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>登录 · Trading Review Agent</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>登录 · TradingReview</title>
 <style>
 body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
 background:#0e1117;color:#e6e6e6;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -57,12 +57,12 @@ background:#0e1117;color:#e6e6e6;font-size:15px}
 button{margin-top:14px;width:100%;padding:10px;border:0;border-radius:8px;background:#2f81f7;color:#fff;
 font-size:15px;cursor:pointer}.err{color:#ff7b72;font-size:13px;margin-top:10px}
 </style></head><body><form method="post" action="/login">
-<h1>📊 交易复盘助手</h1><p>Trading Review Agent</p>
+<h1>📊 TradingReview</h1><p>Al Brooks 交易助手 · 复盘 · 学习</p>
 <input type="password" name="password" placeholder="密码 Password" autofocus>
 <button>登录</button>{error}</form></body></html>"""
 
 APP_PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Trading Review Agent</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TradingReview</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#0e1117;color:#e6e6e6;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
@@ -121,16 +121,16 @@ td,th{border-bottom:1px solid #2b3240;padding:6px;text-align:left;vertical-align
 .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .quick button{padding:4px 10px;font-size:12px;background:#21262d;border:1px solid #2b3240;color:#e6e6e6}
 </style></head><body>
-<aside><h2>历史复盘 <a href="/logout">退出</a></h2><div id="history"></div></aside>
+<aside><h2>历史记录 <a href="/logout">退出</a></h2><div id="history"></div></aside>
 <main>
-  <h1>📊 Al Brooks 交易教练 Trading Coach</h1>
-  <div class="sub">复盘标注 · 理论学习 · 交易决策支持（仅分析，不下单） · 所有理论结论标注来源</div>
+  <h1>📊 TradingReview · Al Brooks 交易助手</h1>
+  <div class="sub">截图 → 在哪入场、止损放哪、目标在哪、该不该做 · 复盘标注 · 理论学习（仅分析，不下单） · 所有理论结论标注来源</div>
   <div class="tabs">
-    <div class="tab on" data-p="review">复盘 Review</div><div class="tab" data-p="study">学习 Study</div>
-    <div class="tab" data-p="decision">决策 Decision</div><div class="tab" data-p="memory">记忆 Memory</div>
+    <div class="tab on" data-p="decision">🎯 交易助手 Trade</div><div class="tab" data-p="review">复盘 Review</div>
+    <div class="tab" data-p="study">学习 Study</div><div class="tab" data-p="memory">记忆 Memory</div>
   </div>
 
-  <section class="pane on" id="p-review">
+  <section class="pane" id="p-review">
     <div class="drop" id="drop"><div class="big">📋 粘贴（<kbd>Ctrl</kbd>+<kbd>V</kbd>）、拖入或点击上传行情截图</div>
       <div class="small">建议截图带上右侧价格轴，标注会更准确</div><img class="preview" id="preview"></div>
     <input type="file" id="file" accept="image/*" hidden>
@@ -176,17 +176,27 @@ td,th{border-bottom:1px solid #2b3240;padding:6px;text-align:left;vertical-align
     <div class="status" id="qstatus"></div>
   </section>
 
-  <section class="pane" id="p-decision">
-    <div class="drop" id="ddrop"><div class="big">📋 粘贴或上传当前行情截图</div>
-      <div class="small">可选：下方粘贴 OHLC CSV（time,open,high,low,close），价格会以数据为准</div><img class="preview" id="dpreview"></div>
+  <section class="pane on" id="p-decision">
+    <div class="drop" id="ddrop"><div class="big">📋 粘贴（<kbd>Ctrl</kbd>+<kbd>V</kbd>）、拖入或点击上传<b>当前</b>行情截图</div>
+      <div class="small">截图带上右侧价格轴，入场 / 止损 / 目标才能给出具体价格；最右边那根K线如果还没收盘也没关系</div><img class="preview" id="dpreview"></div>
     <input type="file" id="dfile" accept="image/*" hidden>
-    <div class="row"><input class="txt" id="dq" value="现在我应该更关注做多还是做空？请给出具体分析。"></div>
-    <div class="row"><textarea id="csv" placeholder="可选 OHLC CSV"></textarea></div>
-    <div class="row"><input class="txt" id="asof" placeholder="可选：分析时点 as_of，例如 2026-11-02 14:30（之后的K线会被丢弃）">
-      <button id="dgo">分析</button></div>
+    <div class="row"><input class="txt" id="dsym" placeholder="品种 + 周期，例如 MES 5分钟（用来计算仓位）" style="max-width:280px">
+      <input class="txt" id="dq" value="现在这里能不能做？如果做，在哪里入场、止损放哪、目标在哪？"></div>
+    <details style="margin-top:10px"><summary class="meta" style="cursor:pointer">可选：OHLC 数据（价格以数据为准）</summary>
+      <div class="row"><textarea id="csv" placeholder="OHLC CSV：time,open,high,low,close"></textarea></div>
+      <div class="row"><input class="txt" id="asof" placeholder="分析时点 as_of，例如 2026-11-02 14:30（之后的K线会被丢弃）"></div></details>
+    <div class="row"><button id="dgo">🎯 给我交易计划</button></div>
     <div class="status" id="dstatus"></div>
-    <div class="card" id="dcard" style="display:none"><h3>💬 决策讨论（可以质疑每一步：方向、入场、止损、目标）</h3>
+    <div id="dresult" style="display:none;margin-top:16px"><a id="dfull" target="_blank"><img id="dimg" style="width:100%;border-radius:8px;border:1px solid #2b3240"></a></div>
+    <div class="card" id="dcard" style="display:none"><h3>💬 交易讨论（可以质疑每一步：方向、入场、止损、目标、仓位）</h3>
       <div class="thread" id="dthread"></div>
+      <div class="quick" id="dquick">
+        <button data-q="为什么止损放在这里？放更近或更远会怎样？">为什么止损在这</button>
+        <button data-q="如果入场没有触发，下一根K线我该怎么办？">没触发怎么办</button>
+        <button data-q="入场之后怎么管理？什么时候移到保本、什么时候止盈？">入场后怎么管理</button>
+        <button data-q="反方向的交易者现在在想什么？他们会在哪里入场？">对手盘怎么想</button>
+        <button data-q="这笔交易最可能失败的原因是什么？">最可能怎么失败</button>
+      </div>
       <div class="row"><textarea id="dask" placeholder="例如「为什么止损放在信号K线下方而不是区间下沿？」「我觉得这里应该偏空」（Ctrl+Enter 发送）"></textarea></div>
       <div class="row"><button id="daskgo">发送</button></div><div class="status" id="daskstatus"></div></div>
   </section>
@@ -281,7 +291,7 @@ function show(m){
   $("analysis").textContent = m.analysis || "（无）";
   $("summary").textContent = m.summary || "（无）";
   $("meta").textContent = m.created.replace("T"," ") + (m.note ? "  ·  " + m.note : "") +
-     (m.source === "telegram" ? "  ·  来自 Telegram" : "") + (m.mode === "decision" ? "  ·  决策分析" : "");
+     (m.source === "telegram" ? "  ·  来自 Telegram" : "") + (m.mode === "decision" ? "  ·  交易计划" : "");
   $("marks").innerHTML = "";
   for (const a of (m.annotations || [])) {
     const b = document.createElement("div"); b.className = "mark";
@@ -330,15 +340,19 @@ ctrlEnter("q", "qgo");
 
 $("dgo").onclick = async () => {
   $("dgo").disabled = true; busy($("dstatus"), "正在分析当前行情…");
-  try { const d = await api("/api/decision", {image:dImage, text:$("dq").value, csv:$("csv").value, as_of:$("asof").value});
+  const q = ($("dsym").value + " " + $("dq").value).trim();
+  try { const d = await api("/api/decision", {image:dImage, text:q, symbol:$("dsym").value, csv:$("csv").value, as_of:$("asof").value});
         $("dstatus").textContent = ""; $("dcard").style.display = "block"; window.dCase = d.case_id;
-        $("dthread").innerHTML = ""; bubble("dthread", "user", $("dq").value); bubble("dthread", "coach", d.text); loadHistory();
+        if (d.image_path) { const src = "/reviews/" + d.case_id + "/review.png?" + Date.now();
+          $("dimg").src = src; $("dfull").href = src; $("dresult").style.display = "block"; }
+        $("dthread").innerHTML = ""; bubble("dthread", "user", q); bubble("dthread", "coach", d.text); loadHistory();
   } catch (e) { fail($("dstatus"), e); }
   $("dgo").disabled = false;
 };
 $("daskgo").onclick = async () => { const t = $("dask").value.trim(); if (!t || !window.dCase) return; $("dask").value = "";
   $("daskgo").disabled = true; await discuss(window.dCase, t, null, "dthread", "daskstatus"); $("daskgo").disabled = false; };
 ctrlEnter("dask", "daskgo");
+document.querySelectorAll("#dquick button").forEach(b => b.onclick = () => window.dCase && discuss(window.dCase, b.dataset.q, null, "dthread", "daskstatus"));
 
 async function memAct(path, body){ try { await api(path, body || {}); loadMemory(); } catch (e) { alert(e.message); } }
 async function loadMemory(){
@@ -364,7 +378,8 @@ async function loadHistory(){
   for (const m of list){
     const d = document.createElement("div"); d.className = "item"; d.dataset.id = m.id;
     d.innerHTML = '<img loading="lazy" src="/reviews/' + m.id + '/review.png"><div><div class="n"></div><div class="t"></div></div>';
-    d.querySelector(".n").textContent = (m.mode === "decision" ? "🎯 " : "") + (m.note || m.description || "复盘");
+    d.querySelector(".n").textContent = m.mode === "decision" ? "🎯 " + ((m.summary || "").split("\n")[0] || m.note || "交易计划")
+                                                              : (m.note || m.description || "复盘");
     d.querySelector(".t").textContent = m.created.replace("T"," ").slice(5,16) + (m.source==="telegram" ? " · TG" : "");
     d.onclick = () => { document.querySelector('.tab[data-p="review"]').click(); show(m); window.scrollTo(0,0); };
     $("history").appendChild(d);
@@ -532,11 +547,15 @@ class Handler(BaseHTTPRequestHandler):
                 req["csv"] = data["csv"].strip()
             if (data.get("as_of") or "").strip():
                 req["as_of"] = data["as_of"].strip()
+            if (data.get("symbol") or "").strip():
+                req["symbol"] = data["symbol"].strip()[:40]
         out = AGENT.handle(req)
         if not out["ok"]:
             return self._json(500, {"error": out["error"]})
         if out.get("figures"):
             out["figures"] = [{"evidence_id": f["evidence_id"], "name": os.path.basename(f["path"])} for f in out["figures"]]
+        if out.get("image_path"):
+            out["image_path"] = os.path.basename(out["image_path"])
         if out.get("revision"):
             out["revision"]["image_name"] = os.path.basename(out["revision"]["image"])
         out.pop("spec", None)
@@ -626,7 +645,7 @@ def main():
     port = int(CFG.get("web_port", 8000))
     server = ThreadingHTTPServer((host, port), Handler)
     url = f"http://localhost:{port}"
-    print(f"\n  ✅ 复盘助手已启动：{url}\n  （关闭这个窗口即可停止）\n")
+    print(f"\n  ✅ TradingReview 已启动：{url}\n  （关闭这个窗口即可停止）\n")
     if CFG.get("open_browser", True):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:

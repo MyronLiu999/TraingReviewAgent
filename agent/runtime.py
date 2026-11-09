@@ -29,6 +29,7 @@ from agent.harness import Harness, Task, TaskStore, Tool, ToolRegistry, Tracer
 from agent.router import find_annotation_ref, route
 from coach import decision as dec
 from coach import discuss as disc
+from coach import plan_chart
 from coach import reflection as refl
 from coach import study
 from coach.discuss import is_challenge as exp_is_challenge
@@ -36,6 +37,7 @@ from knowledge.manifest import is_inside
 from memory.store import MemoryStore
 
 log = logging.getLogger(__name__)
+DEFAULT_TRADE_QUESTION = "现在这里能不能做？如果做，在哪里入场、止损放哪、目标在哪？"
 CURRENT_TASK: contextvars.ContextVar = contextvars.ContextVar("current_task", default=None)
 
 CONCEPT_PATTERNS = {
@@ -237,7 +239,7 @@ class CoachAgent:
             content.append({"type": "image_url", "image_url": {
                 "url": cr.to_data_url(cr.with_grid(cr.prepare(Image.open(image_path)))), "detail": "high"}})
         return self.llm.json_call(system=system, content=content, schema_name="trade_decision",
-                                  schema=dec.DECISION_SCHEMA, purpose="decision", max_tokens=5000,
+                                  schema=dec.DECISION_SCHEMA, purpose="decision", max_tokens=8000,
                                   recorder=self._recorder)
 
     def _t_candidate(self, kind, content, rationale, source_type, source_ref):
@@ -651,7 +653,8 @@ class CoachAgent:
     # ------------------------------------------------------------ DECISION
     def decide(self, request: dict, sid: str) -> dict:
         image = self._image_from(request)
-        question = (request.get("text") or "现在应该更关注做多还是做空？").strip()
+        question = (request.get("text") or DEFAULT_TRADE_QUESTION).strip()
+        settings = dec.trading_settings(self.cfg)
         task = self._task("decision", request, sid)
         rid = cr.new_review_id()
         folder = os.path.join(self.reviews_dir, rid)
@@ -678,7 +681,7 @@ class CoachAgent:
             note = (f"OHLC data up to {md['summary'].get('last_time')}, {md['dropped_future_bars']} later bars "
                     "were removed before analysis") if md else "screenshot only; the last bar on the screenshot"
             system = dec.build_system(t.data["evidence"], t.data["learning"], md["summary"] if md else None,
-                                      bool(self.cfg.get("decisive_style", True)), note)
+                                      bool(self.cfg.get("decisive_style", True)), note, settings)
             t.data["data_note"] = note
             t.data["raw"] = self.harness.tool(t, "evaluate_trade_hypothesis", system=system, question=question,
                                               image_path=t.data.get("input_image"))
@@ -686,7 +689,8 @@ class CoachAgent:
         def verify(t):
             from market.ohlc import Bar
             bars = [Bar(datetime.fromisoformat(b[0]), *b[1:]) for b in t.data["market"]["bars"]] if t.data.get("market") else None
-            result, issues = dec.validate_decision(t.data["raw"], t.data["evidence"], bars)
+            hint = " ".join(str(request.get(k) or "") for k in ("symbol", "note")) + " " + question
+            result, issues = dec.validate_decision(t.data["raw"], t.data["evidence"], bars, settings, symbol_hint=hint)
             t.data["result"], t.validation = result, t.validation + [{"decision": i} for i in issues]
             t.data["issues"] = issues
 
@@ -696,15 +700,24 @@ class CoachAgent:
             dq = {"source": "OHLC + screenshot" if md and image is not None else "OHLC" if md else "screenshot",
                   "time_range": f"{md['summary']['first_time']} → {md['summary']['last_time']}" if md else r.get("data_time_range"),
                   "dropped_future_bars": md["dropped_future_bars"] if md else 0, "note": t.data["data_note"]}
-            text = dec.format_decision(r, t.data["evidence"], t.data["issues"], dq)
+            plan_path = None
             if image is not None:
                 orig = Image.open(t.data["input_image"])
-                cr.store_review(orig, orig, {"analysis": text, "summary": f"{r['bias']}: {r['conclusion']}"},
+                plan_img, plan_issues = plan_chart.render_plan(orig, r, dec.headline(r, plain=True))
+                t.data["issues"] += plan_issues
+                t.validation += [{"plan_chart": i} for i in plan_issues]
+            text = dec.format_decision(r, t.data["evidence"], t.data["issues"], dq)
+            if image is not None:
+                cr.store_review(orig, plan_img, {"analysis": text, "summary": f"{dec.headline(r)}\n{r['conclusion']}"},
                                 question, source=request.get("source", "web"), rid=rid, reviews_dir=self.reviews_dir,
                                 extra={"mode": "decision", "task_id": t.task_id, "decision": r})
+                plan_path = os.path.join(folder, "review.png")
+            t.data["plan_image"] = plan_path
             case = {"case_id": rid, "analysis_timestamp": t.data["analysis_timestamp"], "mode": "decision",
-                    "symbol": _symbol(question), "timeframe": _timeframe(question), "note": question,
-                    "original_path": t.data.get("input_image"), "market_context": r["market_context"],
+                    "symbol": _symbol(question) or r["position"].get("symbol") or r["chart_read"].get("symbol") or None,
+                    "timeframe": _timeframe(question) or r["chart_read"].get("timeframe") or None, "note": question,
+                    "original_path": t.data.get("input_image"), "annotated_path": plan_path,
+                    "market_context": r["market_context"],
                     "setup_classification": r["primary_setup"]["type"], "initial_hypothesis": r,
                     "supporting_evidence": {"evidence": [e["doc_id"] for e in t.data["evidence"]],
                                             "knowledge_version": getattr(self.kb, "version", None)},
@@ -724,6 +737,7 @@ class CoachAgent:
                                 ("analyze", "ANALYZING", analyze), ("verify", "VERIFYING", verify),
                                 ("save", "SAVING", save)])
         return {"task_id": task.task_id, "case_id": rid, "text": task.data["text"], "decision": task.data["result"],
+                "image_path": task.data.get("plan_image"),
                 "validation": task.validation, "evidence": _strip(task.data["evidence"])}
 
     # ------------------------------------------------------------ OUTCOME / REFLECTION

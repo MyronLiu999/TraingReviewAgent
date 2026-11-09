@@ -1,5 +1,6 @@
-"""Trading assistant bot: chart reviews + news alerts, delivered through Telegram.
+"""TradingReview Telegram bot: Al Brooks trade plans, chart reviews and news alerts.
 
+Send the bot a chart screenshot captioned /trade -> entry / stop / targets / TAKE-WAIT-NO_TRADE.
 Send the bot a chart screenshot  -> it replies with an annotated price-action review chart.
 News feeds are checked in the background -> important headlines are sent as alerts.
 
@@ -32,10 +33,14 @@ from telegram_bot import Telegram, format_alert, md_to_html
 
 log = logging.getLogger("news_bot")
 
-HELP = """📊 <b>Chart review 复盘</b>
+HELP = """🎯 <b>TradingReview 交易助手</b>
+Send a chart screenshot captioned <b>/trade MES 5分钟</b> (or "这里能不能做？在哪入场？") —
+I'll draw entry / stop / targets on the chart and say TAKE / WAIT / NO_TRADE, with the trader's
+equation and the position size for your risk settings (analysis only, no orders). /decide works too.
+
+📊 <b>Chart review 复盘</b>
 Send me a chart screenshot (photo, or as a file for full quality).
 Add a caption for context, e.g. "MYM 5分钟，我在高点做空" — I'll reply with an annotated review chart.
-Caption "/decide" (or "现在做多还是做空？") — LONG / SHORT / WAIT plan instead (analysis only).
 
 <b>Brooks coach 教练</b>
 /study 问题 — theory question with book citations, e.g. /study 解释 H2 和两段回调
@@ -156,12 +161,15 @@ class Bot:
             self.handle_message(msg["text"])
 
     def review_chart(self, file_id: str, note: str) -> None:
-        decide = note.lower().startswith("/decide")
-        self.notify("🎯 收到图表，正在做交易决策分析…" if decide else "📊 收到图表，正在复盘，大约需要 30-120 秒…")
+        cmd = next((c for c in ("/decide", "/trade") if note.lower().startswith(c)), None)
+        decide = cmd is not None
+        self.notify("🎯 收到图表，正在制定交易计划…" if decide else "📊 收到图表，正在复盘，大约需要 30-120 秒…")
         try:
             chart = Image.open(io.BytesIO(self.tg.download(file_id)))
             if decide:
-                note = note[len("/decide"):].strip() or "现在我应该更关注做多还是做空？"
+                rest = note[len(cmd):].strip()
+                note = rest if re.search(r"[?？吗]|入场|做多|做空|止损|目标", rest) else \
+                    (rest + " 现在这里能不能做？如果做，在哪里入场、止损放哪、目标在哪？").strip()
             out = self.coach({"image": chart, "text": note, "note": note,
                               **({"mode": "decision"} if decide else {})})
             if out is None:   # coach unavailable: the original single-call review
@@ -171,7 +179,10 @@ class Bot:
             elif not out["ok"]:
                 raise RuntimeError(out["error"])
             elif out["mode"] == "decision":
-                self.notify("🎯 <b>交易决策（仅分析，不下单）</b>\n" + md_to_html(out["text"]))
+                if out.get("image_path"):
+                    with open(out["image_path"], "rb") as f:
+                        self.tg.send_photo(f.read(), caption="交易计划 Trade plan")
+                self.notify("🎯 <b>交易计划（仅分析，不下单）</b>\n" + md_to_html(out["text"]))
                 return
             else:
                 img, meta, analysis = Image.open(out["image_path"]), out["meta"], out["text"]
@@ -346,7 +357,8 @@ class Bot:
         poll = int(self.cfg.get("poll_seconds", 120))
         next_poll = 0.0
         if self.tg and not once:
-            self.notify("🤖 Bot started. Send me a chart screenshot for a review (复盘), "
+            self.notify("🤖 TradingReview started. Send a chart captioned /trade for a trade plan, "
+                        "or just a chart for a review (复盘), "
                         f"or /help for commands. News markets: <b>{', '.join(self.markets)}</b>")
         while True:
             if self.tg:

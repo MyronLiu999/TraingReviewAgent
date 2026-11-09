@@ -17,7 +17,7 @@ knowledge_primer      = "11_REVIEW_AGENT_PRIMER.md"
 review_snap_targets   = true       # nudge arrows/rings onto the nearest candle high/low (records the original spot)
 review_auto_layout    = true       # move labels next to their bars, into empty space (records the model's spot)
 
-# ---------------- Brooks Coach: Study / Review / Decision ----------------
+# ---------------- TradingReview · Brooks coach: Trade / Review / Study ----------------
 # Versioned, hash-checked, read-only Brooks knowledge (managed only with: python -m knowledge.admin ...).
 canonical_store         = "D:/Uchicago Courses/Trading/BrooksCanonicalKB"
 knowledge_upload_folder = "D:/Uchicago Courses/Trading/TradingKnowledgeUpload"  # extracted text (admin import only)
@@ -98,3 +98,38 @@ tier = 3
 name = "Google News: stock market"
 url  = "https://news.google.com/rss/search?q=stock+market+OR+Fed+OR+CPI+when:1h&hl=en-US&gl=US&ceid=US:en"
 tier = 3
+
+# ======== Tables below (TOML: keep these at the end of the file) ========
+
+# ---------------- Trade assistant 交易助手 (your risk, used by code - not by the model) ----------------
+# The trade plan sizes the position so that one stopped-out trade loses at most
+# min(account_size * risk_per_trade_pct %, max_risk_per_trade). 0 = not set (no size shown).
+[trading]
+account_size        = 0          # e.g. 10000 (USD)
+risk_per_trade_pct  = 1.0        # % of the account you accept to lose on one trade
+max_risk_per_trade  = 0          # optional hard cap in USD (0 = none)
+max_contracts       = 0          # optional cap on contracts (0 = none)
+min_setup_quality   = "B"        # A / B / C: a TAKE below this grade becomes WAIT
+default_symbol      = ""         # used when the chart and your note do not name the instrument, e.g. "MES"
+# Minimum reward/risk per probability class before a TAKE is allowed (Brooks' trader's equation)
+min_rr_high = 1.0
+min_rr_even = 1.5
+min_rr_low  = 2.0
+# Dollars per 1.0 point per contract; add your instruments (built in: ES MES NQ MNQ YM MYM RTY M2K GC MGC SI SIL CL MCL NG 6E M6E ZB ZN)
+[trading.point_values]
+# SPY = 1
+
+# ---------------- Live monitoring 实时监控 (next phase; interface ready, not started by the web UI) ----------------
+# Run it with:  .venv\Scripts\python agent_cli.py monitor   (Ctrl+C stops). Every analysis is a model call (costs money).
+[monitor]
+source                   = "csv"     # "csv" = a file your platform keeps exporting, "screenshots" = a folder of chart images
+csv_path                 = ""        # e.g. "D:/Trading/export/MES_5m.csv"  (time,open,high,low,close)
+forming_last_bar         = false     # true if the export's last row is the bar that is still forming
+screenshot_folder        = ""        # e.g. "D:/Trading/shots"
+symbol                   = "MES"
+timeframe                = "5m"
+poll_seconds             = 10
+reanalyze_every_bars     = 3         # new model analysis after this many new closed bars (not while a plan is in a trade)
+max_model_calls_per_hour = 12
+notify                   = "changes" # "changes" = only when the call changes / a trigger hits, "all" = every analysis
+notify_channel           = "telegram" # "telegram" (if configured) or "console"
